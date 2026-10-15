@@ -1,0 +1,451 @@
+package templates
+
+import (
+	"strconv"
+
+	"accounting/internal/database/db"
+	"accounting/internal/models"
+)
+
+// statementFilterForm adalah form pemilihan periode, rentang tanggal, dan
+// periode pembanding yang dipakai semua halaman laporan.
+templ statementFilterForm(view models.ReportView) {
+	<form method="get" class={ cardClass + " mt-6 flex flex-wrap items-end gap-4 px-5 py-4" }>
+		<div>
+			<label class="mb-1.5 block text-sm font-medium text-ink" for="period">Periode akuntansi</label>
+			<select id="period" name="period" class={ inputClass + " w-56" }>
+				<option value="">Periode terbaru</option>
+				for _, p := range view.Periods {
+					<option value={ strconv.FormatInt(p.ID, 10) } selected?={ p.ID == view.SelectedPeriodID }>
+						{ p.Name } · { p.StatusLabel }
+					</option>
+				}
+			</select>
+		</div>
+		<div class="w-44">
+			@dateField("from", "from", "Dari tanggal", view.DateFrom)
+		</div>
+		<div class="w-44">
+			@dateField("to", "to", "Sampai tanggal", view.DateTo)
+		</div>
+		<div>
+			<label class="mb-1.5 block text-sm font-medium text-ink" for="compare">Periode pembanding</label>
+			<select id="compare" name="compare" class={ inputClass + " w-56" }>
+				<option value="">Otomatis (periode sebelumnya)</option>
+				for _, p := range view.Periods {
+					<option value={ strconv.FormatInt(p.ID, 10) } selected?={ p.ID == view.ComparePeriodID }>
+						{ p.Name }
+					</option>
+				}
+			</select>
+		</div>
+		<button type="submit" class={ btnPrimary }>Tampilkan</button>
+	</form>
+}
+
+// ---------------------------------------------------------------------------
+// Laporan Perubahan Ekuitas (PSAK 201 par. 106-110)
+// ---------------------------------------------------------------------------
+
+// equityRow adalah satu baris matriks perubahan ekuitas: satu sel per komponen
+// ekuitas, satu sel untuk laba belum ditutup, dan satu sel jumlah.
+type equityRow struct {
+	Name     string
+	Cells    []int64
+	Unclosed int64
+	Total    int64
+	Kind     int // 0 biasa, 1 subtotal, 2 total akhir
+}
+
+// equityRows menyusun baris matriks dari satu EquityStatement. Distribusi
+// kepada pemilik ditampilkan sebagai pengurang (negatif).
+func equityRows(s models.EquityStatement) []equityRow {
+	cells := func(f func(models.EquityColumn) int64) []int64 {
+		out := make([]int64, len(s.Columns))
+		for i, c := range s.Columns {
+			out[i] = f(c)
+		}
+		return out
+	}
+	rows := []equityRow{
+		{Name: "Saldo awal periode", Cells: cells(func(c models.EquityColumn) int64 { return c.Opening }), Unclosed: s.UnclosedOpening, Total: s.TotalOpening, Kind: 1},
+		{Name: "Setoran modal (kontribusi pemilik)", Cells: cells(func(c models.EquityColumn) int64 { return c.Contribution }), Total: s.TotalContribution},
+		{Name: "Prive dan dividen (distribusi kepada pemilik)", Cells: cells(func(c models.EquityColumn) int64 { return -c.Distribution }), Total: -s.TotalDistribution},
+		{Name: "Laba (rugi) periode berjalan", Cells: cells(func(models.EquityColumn) int64 { return 0 }), Unclosed: s.UnclosedProfit, Total: s.TotalProfit()},
+	}
+	if s.UnclosedTransfer != 0 || hasProfitTransfer(s) {
+		rows = append(rows, equityRow{
+			Name:     "Pemindahan laba ke akun saldo laba (jurnal penutup)",
+			Cells:    cells(func(c models.EquityColumn) int64 { return c.ProfitTransfer }),
+			Unclosed: -s.UnclosedTransfer,
+			Total:    0,
+		})
+	}
+	rows = append(rows, equityRow{
+		Name:     "Saldo akhir periode",
+		Cells:    cells(func(c models.EquityColumn) int64 { return c.Closing }),
+		Unclosed: s.UnclosedClosing,
+		Total:    s.TotalClosing,
+		Kind:     2,
+	})
+	return rows
+}
+
+// hasProfitTransfer memeriksa apakah ada pemindahan laba oleh jurnal penutup.
+func hasProfitTransfer(s models.EquityStatement) bool {
+	for _, c := range s.Columns {
+		if c.ProfitTransfer != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// equityMatrix adalah satu matriks perubahan ekuitas untuk satu periode.
+templ equityMatrix(view models.EquityView, s models.EquityStatement) {
+	<table class="w-full text-sm">
+		<thead>
+			<tr class="border-b border-line bg-panel/60 text-[11px] uppercase tracking-wider text-muted">
+				<th class="px-4 py-2.5 text-left">Pos</th>
+				for _, col := range s.Columns {
+					<th class="px-4 py-2.5 text-right">
+						<span class="block">{ col.Name }</span>
+						<span class="block font-normal normal-case tracking-normal num">{ col.Code }</span>
+					</th>
+				}
+				<th class="px-4 py-2.5 text-right">
+					<span class="block">Laba (Rugi)</span>
+					<span class="block font-normal normal-case tracking-normal">Belum Ditutup</span>
+				</th>
+				<th class="px-4 py-2.5 text-right">Jumlah</th>
+			</tr>
+		</thead>
+		<tbody class="divide-y divide-line/50">
+			for _, row := range equityRows(s) {
+				<tr class={ rowClass(row.Kind) }>
+					<td class="px-4 py-2 text-label">{ row.Name }</td>
+					for _, cell := range row.Cells {
+						<td class="num px-4 py-2 text-right text-ink">{ view.Money(cell) }</td>
+					}
+					<td class="num px-4 py-2 text-right text-muted">{ view.Money(row.Unclosed) }</td>
+					<td class={ totalClass(row.Kind) }>{ view.Money(row.Total) }</td>
+				</tr>
+			}
+		</tbody>
+	</table>
+}
+
+// rowClass memberi gaya baris sesuai tingkatannya.
+func rowClass(kind int) string {
+	switch kind {
+	case 1:
+		return "border-t border-line bg-panel/40"
+	case 2:
+		return "border-t-2 border-line bg-accent-wash"
+	default:
+		return "transition-colors hover:bg-panel/60"
+	}
+}
+
+// totalClass memberi gaya kolom jumlah sesuai tingkatan baris.
+func totalClass(kind int) string {
+	if kind == 0 {
+		return "num px-4 py-2 text-right text-ink"
+	}
+	return "num px-4 py-2 text-right font-semibold text-ink"
+}
+
+// EquityPage menampilkan Laporan Perubahan Ekuitas: rekonsiliasi saldo awal ke
+// saldo akhir setiap komponen ekuitas, dengan laba periode dan transaksi
+// dengan pemilik sebagai baris terpisah (PSAK 201 par. 106-110).
+templ EquityPage(shell Shell, company db.Company, view models.EquityView) {
+	@Layout(shell) {
+		@pageHeader("Laporan Perubahan Ekuitas", "Rekonsiliasi saldo awal ke saldo akhir setiap komponen ekuitas, memisahkan laba (rugi) periode berjalan dan transaksi dengan pemilik. Disusun menurut PSAK 201 par. 106-110.") {
+			<a href={ periodsPath(company.ID) } class={ btnSecondary }>Periode &amp; Tutup Buku</a>
+		}
+		@statementFilterForm(view.ReportView)
+		<div class="mt-8 grid gap-6">
+			<div class={ cardClass }>
+				@reportIdentity(view.ReportView, "Laporan Perubahan Ekuitas", "Untuk periode "+view.PeriodName)
+				<div class="overflow-x-auto">
+					@equityMatrix(view, view.Cur)
+				</div>
+			</div>
+			if view.HasComparative && view.Pri != nil {
+				<div class={ cardClass }>
+					@reportIdentity(view.ReportView, "Laporan Perubahan Ekuitas", "Periode pembanding: "+view.PriorPeriodName)
+					<div class="overflow-x-auto">
+						@equityMatrix(view, *view.Pri)
+					</div>
+				</div>
+			}
+		</div>
+		<p class="mt-6 text-xs leading-relaxed text-muted">
+			Setiap kolom adalah satu komponen ekuitas (PSAK 201 par. 108). Setoran modal dan
+			prive/dividen adalah transaksi dengan pemilik dalam kapasitasnya sebagai pemilik
+			(par. 106 huruf d (iii)) dan disajikan terpisah dari laba (rugi) periode berjalan
+			(par. 106 huruf d (i)). Kolom "Laba (Rugi) Belum Ditutup" mewakili laba periode yang
+			belum dipindahkan ke akun saldo laba, sejajar dengan baris yang sama di Neraca.
+			Mutasi ekuitas selain laba periode dan jurnal penutup diklasifikasikan sebagai
+			transaksi dengan pemilik: kredit sebagai setoran modal, debit sebagai prive/dividen.
+			Jumlah distribusi kepada pemilik selama periode berjalan adalah
+			<span class="num font-medium">{ view.Money(view.Cur.Distributions()) }</span> (par. 107).
+		</p>
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Laporan Arus Kas (PSAK 207), metode tidak langsung
+// ---------------------------------------------------------------------------
+
+// stmtRow adalah baris angka biasa dengan dua kolom periode.
+templ stmtRow(view models.ReportView, label string, amount int64, prior int64) {
+	<tr class="transition-colors hover:bg-panel/60">
+		<td class="px-5 py-2 text-label">{ label }</td>
+		<td class="num px-5 py-2 text-right text-ink">{ view.Money(amount) }</td>
+		<td class="num px-5 py-2 text-right text-muted">{ view.PriorMoney(prior) }</td>
+	</tr>
+}
+
+// CashFlowPage menampilkan Laporan Arus Kas metode tidak langsung: laba rugi
+// disesuaikan pos non-kas dan perubahan modal kerja (PSAK 207 par. 18 huruf b).
+templ CashFlowPage(shell Shell, company db.Company, view models.CashFlowView) {
+	@Layout(shell) {
+		@pageHeader("Laporan Arus Kas", "Perubahan kas dan setara kas menurut aktivitas operasi, investasi, dan pendanaan, disusun dengan metode tidak langsung (PSAK 207).") {
+			<a href={ periodsPath(company.ID) } class={ btnSecondary }>Periode &amp; Tutup Buku</a>
+		}
+		@statementFilterForm(view.ReportView)
+		<div class="mt-8 grid gap-6">
+			<div class={ cardClass }>
+				@reportIdentity(view.ReportView, "Laporan Arus Kas", "Untuk periode "+view.PeriodName)
+				<table class="w-full text-sm">
+					@reportColumns(view.ReportView)
+					<tbody class="divide-y divide-line/50">
+						@psakHeader("Arus kas dari aktivitas operasi")
+						@stmtRow(view.ReportView, "Laba (rugi) periode berjalan", view.NetIncome, view.PriorNetIncome)
+						for _, line := range view.NonCash {
+							@reportRow(view.ReportView, line)
+						}
+						for _, line := range view.WorkingCapital {
+							@reportRow(view.ReportView, line)
+						}
+						@psakSubtotal(view.ReportView, "Kas neto dari aktivitas operasi", view.OperatingNet(), view.PriorOperatingNet())
+						@psakHeader("Arus kas dari aktivitas investasi")
+						for _, line := range view.Investing {
+							@reportRow(view.ReportView, line)
+						}
+						@psakSubtotal(view.ReportView, "Kas neto yang digunakan untuk aktivitas investasi", view.TotalInvesting(), view.PriorTotalInvesting())
+						@psakHeader("Arus kas dari aktivitas pendanaan")
+						for _, line := range view.Financing {
+							@reportRow(view.ReportView, line)
+						}
+						@psakSubtotal(view.ReportView, "Kas neto dari aktivitas pendanaan", view.TotalFinancing(), view.PriorTotalFinancing())
+					</tbody>
+					<tfoot>
+						@psakGrand(view.ReportView, "Kenaikan (penurunan) neto kas dan setara kas", view.NetChange(), view.PriorNetChange())
+						@stmtRow(view.ReportView, "Kas dan setara kas pada awal periode", view.CashBeginning, view.PriorCashBeginning)
+						@psakGrand(view.ReportView, "Kas dan setara kas pada akhir periode", view.CashEnd, view.PriorCashEnd)
+					</tfoot>
+				</table>
+				<div class="border-t border-line px-5 py-3 text-xs leading-relaxed text-muted">
+					Kas dan setara kas (PSAK 207 par. 06-09): kas di tangan dan di bank yang dapat
+					ditarik sewaktu-waktu, serta investasi jangka pendek yang sangat likuid dengan
+					jatuh tempo tiga bulan atau kurang. Aktivitas operasi disusun dengan metode
+					tidak langsung (par. 18 huruf b): laba periode berjalan disesuaikan dengan
+					pos non-kas (penyusutan dan amortisasi) serta perubahan modal kerja. Aktivitas
+					investasi disajikan neto sebagai perubahan nilai buku aset tidak lancar
+					(par. 21-22 mengizinkan penyajian neto untuk kelompok putaran cepat; rincian
+					bruto perolehan dan pelepasan belum dicatat terpisah). Bunga dan pajak
+					diklasifikasikan sebagai aktivitas operasi secara konsisten (par. 29-34).
+					Rekonsiliasi: kas pada akhir periode di atas sama dengan pos kas dan setara
+					kas pada Neraca tanggal { view.DateToLabel }.
+				</div>
+			</div>
+		</div>
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Catatan atas Laporan Keuangan (PSAK 201 par. 112-138)
+// ---------------------------------------------------------------------------
+
+// NotesPage menampilkan Catatan atas Laporan Keuangan: pernyataan kepatuhan,
+// dasar penyusunan, kebijakan akuntansi signifikan, sumber ketidakpastian
+// estimasi, rincian per akun material dengan referensi silang, pengelolaan
+// modal, transaksi dengan pemilik, dan informasi entitas.
+templ NotesPage(shell Shell, company db.Company, view models.NotesView) {
+	@Layout(shell) {
+		@pageHeader("Catatan atas Laporan Keuangan", "Dasar penyusunan, kebijakan akuntansi signifikan, sumber ketidakpastian estimasi, dan rincian per akun dengan referensi silang. Disusun menurut PSAK 201 par. 112-138.") {
+			<a href={ periodsPath(company.ID) } class={ btnSecondary }>Periode &amp; Tutup Buku</a>
+		}
+		@statementFilterForm(view.ReportView)
+		<div class="mt-8 grid gap-6">
+			<div class={ cardClass }>
+				@reportIdentity(view.ReportView, "Catatan atas Laporan Keuangan", "Untuk periode "+view.PeriodName)
+				<div class="space-y-8 px-5 py-5 text-sm leading-relaxed text-ink">
+					<section>
+						<h3 class="text-sm font-semibold text-ink">1. Pernyataan kepatuhan dan dasar penyusunan</h3>
+						<p class="mt-2 text-muted">{ view.Compliance }</p>
+						<ul class="mt-3 list-disc space-y-1.5 pl-5 text-muted">
+							for _, note := range view.BasisNotes {
+								<li>{ note }</li>
+							}
+						</ul>
+					</section>
+					<section>
+						<h3 class="text-sm font-semibold text-ink">2. Kebijakan akuntansi signifikan</h3>
+						<p class="mt-2 text-muted">
+							Ringkasan kebijakan akuntansi yang diterapkan dan material bagi pemahaman
+							laporan keuangan (PSAK 201 par. 117-124).
+						</p>
+						<div class="mt-3 space-y-4">
+							for _, policy := range view.Policies {
+								<div id={ policy.Anchor } class="rounded-input border border-line px-4 py-3">
+									<h4 class="text-sm font-medium text-ink">
+										Kebijakan { strconv.Itoa(policy.Number) }: { policy.Title }
+									</h4>
+									<p class="mt-1.5 text-muted">{ policy.Body }</p>
+								</div>
+							}
+						</div>
+					</section>
+					<section>
+						<h3 class="text-sm font-semibold text-ink">3. Sumber ketidakpastian estimasi</h3>
+						<p class="mt-2 text-muted">
+							Asumsi mengenai masa depan dan sumber utama ketidakpastian estimasi pada
+							akhir periode pelaporan yang berisiko menyebabkan penyesuaian material pada
+							periode berikutnya (PSAK 201 par. 125-131).
+						</p>
+						if len(view.Estimates) == 0 {
+							<p class="mt-2 text-muted">
+								Tidak terdapat sumber ketidakpastian estimasi yang signifikan pada akhir
+								periode pelaporan berdasarkan catatan yang tersedia.
+							</p>
+						} else {
+							<table class="mt-3 w-full text-sm">
+								<thead>
+									<tr class="border-b border-line bg-panel/60 text-[11px] uppercase tracking-wider text-muted">
+										<th class="px-4 py-2.5 text-left">Sifat asumsi</th>
+										<th class="px-4 py-2.5 text-right">Jumlah tercatat</th>
+										<th class="px-4 py-2.5 text-left">Kebijakan terkait</th>
+									</tr>
+								</thead>
+								<tbody class="divide-y divide-line/50">
+									for _, est := range view.Estimates {
+										<tr class="transition-colors hover:bg-panel/60">
+											<td class="px-4 py-2.5">
+												<span class="text-label">{ est.Title }</span>
+												<div class="mt-1 text-xs text-muted">{ est.Nature }</div>
+											</td>
+											<td class="num px-4 py-2.5 text-right text-ink">{ view.Money(est.AmountCents) }</td>
+											<td class="px-4 py-2.5">
+												if est.PolicyNumber > 0 {
+													<a href={ anchorURL(policyAnchor(view.Policies, est.PolicyNumber)) } class="text-accent hover:underline">
+														Kebijakan { strconv.Itoa(est.PolicyNumber) }
+													</a>
+												} else {
+													<span class="text-muted">-</span>
+												}
+											</td>
+										</tr>
+									}
+								</tbody>
+							</table>
+						}
+					</section>
+					<section>
+						<h3 class="text-sm font-semibold text-ink">4. Rincian pos laporan keuangan</h3>
+						<p class="mt-2 text-muted">
+							Rincian per akun material dengan referensi silang ke kebijakan akuntansi
+							terkait (PSAK 201 par. 113). Jumlah pada kolom periode berjalan untuk pos
+							neraca adalah saldo akhir periode; untuk pos pendapatan dan beban adalah
+							mutasi periode berjalan.
+						</p>
+						<div class="mt-3 space-y-5">
+							for _, group := range view.Groups {
+								<div>
+									<table class="w-full text-sm">
+										<thead>
+											<tr class="border-y border-line bg-panel/80">
+												<th class="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted">{ group.Label }</th>
+												<th class="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-muted">Periode Berjalan</th>
+												<th class="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-muted">Periode Pembanding</th>
+												<th class="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted">Rujukan</th>
+											</tr>
+										</thead>
+										<tbody class="divide-y divide-line/50">
+											for _, line := range group.Lines {
+												<tr class="transition-colors hover:bg-panel/60">
+													<td class="px-4 py-2">
+														<span class="num text-xs text-muted">{ line.Code }</span>
+														<span class="text-label">{ line.Name }</span>
+													</td>
+													<td class="num px-4 py-2 text-right text-ink">{ view.Money(line.AmountCents) }</td>
+													<td class="num px-4 py-2 text-right text-muted">{ view.PriorMoney(line.PriorAmountCents) }</td>
+													<td class="px-4 py-2 text-xs">
+														if line.PolicyNumber > 0 {
+															<a href={ anchorURL(line.PolicyAnchor) } class="text-accent hover:underline">
+																Kebijakan { strconv.Itoa(line.PolicyNumber) }
+															</a>
+														} else {
+															<span class="text-muted">-</span>
+														}
+													</td>
+												</tr>
+											}
+											<tr class="border-t border-line bg-panel/40">
+												<td class="px-4 py-2.5 font-medium text-ink">Jumlah { group.Label }</td>
+												<td class="num px-4 py-2.5 text-right font-semibold text-ink">{ view.Money(group.TotalCents) }</td>
+												<td class="num px-4 py-2.5 text-right font-medium text-muted">{ view.PriorMoney(group.PriorTotalCents) }</td>
+												<td></td>
+											</tr>
+										</tbody>
+									</table>
+								</div>
+							}
+						</div>
+					</section>
+					<section>
+						<h3 class="text-sm font-semibold text-ink">5. Pengelolaan modal</h3>
+						<p class="mt-2 text-muted">{ view.CapitalNote }</p>
+					</section>
+					<section>
+						<h3 class="text-sm font-semibold text-ink">6. Transaksi dengan pemilik dan dividen</h3>
+						<p class="mt-2 text-muted">
+							Jumlah distribusi kepada pemilik yang diakui sebagai distribusi selama periode
+							berjalan adalah <span class="num font-medium">{ view.Money(view.Distributions) }</span>
+							(PSAK 201 par. 107). Dividen per saham tidak diungkapkan karena entitas
+							bukan perseroan terbuka dan jumlah lembar saham tidak dicatat. Tidak terdapat
+							dividen yang diusulkan atau diumumkan sebelum laporan keuangan diotorisasi
+							untuk terbit tetapi belum diakui sebagai distribusi, sepanjang yang tercatat
+							dalam catatan entitas (par. 137).
+						</p>
+					</section>
+					<section>
+						<h3 class="text-sm font-semibold text-ink">7. Informasi entitas</h3>
+						<ul class="mt-2 list-disc space-y-1.5 pl-5 text-muted">
+							for _, fact := range view.EntityFacts {
+								<li>{ fact }</li>
+							}
+						</ul>
+					</section>
+				</div>
+			</div>
+		</div>
+	}
+}
+
+// policyAnchor mencari anchor kebijakan dari nomornya.
+func policyAnchor(policies []models.NotePolicy, number int) string {
+	for _, p := range policies {
+		if p.Number == number {
+			return p.Anchor
+		}
+	}
+	return ""
+}
+
+// anchorURL membentuk URL tautan internal ke bagian catatan.
+func anchorURL(anchor string) templ.SafeURL {
+	return templ.SafeURL("#" + anchor)
+}

@@ -91,6 +91,19 @@ type Querier interface {
 	ListAccountTotalsByPeriodAdjusting(ctx context.Context, arg ListAccountTotalsByPeriodAdjustingParams) ([]ListAccountTotalsByPeriodAdjustingRow, error)
 	// Neraca saldo sebelum penyesuaian: mutasi periode tanpa jurnal penyesuaian.
 	ListAccountTotalsByPeriodPlain(ctx context.Context, arg ListAccountTotalsByPeriodPlainParams) ([]ListAccountTotalsByPeriodPlainRow, error)
+	// Mutasi akun dari jurnal penutup (kind=closing) pada rentang tanggal tertentu.
+	// Dalam Laporan Perubahan Ekuitas mutasi ini adalah pemindahan laba periode ke
+	// akun saldo laba, bukan transaksi dengan pemilik.
+	ListAccountTotalsClosing(ctx context.Context, arg ListAccountTotalsClosingParams) ([]ListAccountTotalsClosingRow, error)
+	// Mutasi akun pada rentang tanggal tertentu, TANPA jurnal saldo awal (kind=opening)
+	// dan jurnal penutup (kind=closing). Dipakai Laporan Perubahan Ekuitas (untuk
+	// transaksi dengan pemilik), Laporan Arus Kas (metode tidak langsung), dan
+	// perhitungan laba periode berjalan yang belum dipengaruhi jurnal penutup.
+	ListAccountTotalsMovements(ctx context.Context, arg ListAccountTotalsMovementsParams) ([]ListAccountTotalsMovementsRow, error)
+	// Saldo awal akun sebelum tanggal mulai laporan, termasuk jurnal saldo awal
+	// (kind=opening) yang memang bertanggal awal periode pertama. Dipakai untuk
+	// saldo awal Laporan Perubahan Ekuitas dan saldo awal kas pada Laporan Arus Kas.
+	ListAccountTotalsOpening(ctx context.Context, arg ListAccountTotalsOpeningParams) ([]ListAccountTotalsOpeningRow, error)
 	ListAccounts(ctx context.Context, companyID int64) ([]Account, error)
 	ListAccountsAll(ctx context.Context, companyID int64) ([]Account, error)
 	ListAdjustingJournals(ctx context.Context, arg ListAdjustingJournalsParams) ([]Journal, error)

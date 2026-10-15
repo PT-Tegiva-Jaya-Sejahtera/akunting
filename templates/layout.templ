@@ -150,6 +150,18 @@ templ navLinks(shell Shell) {
 			@navIcon("bs")
 			Neraca
 		</a>
+		<a href={ companyPath(shell.CompanyKey, "/reports/equity") } class={ navClass(shell.Active == "equity") }>
+			@navIcon("statements")
+			Perubahan Ekuitas
+		</a>
+		<a href={ companyPath(shell.CompanyKey, "/reports/cashflow") } class={ navClass(shell.Active == "cashflow") }>
+			@navIcon("statements")
+			Arus Kas
+		</a>
+		<a href={ companyPath(shell.CompanyKey, "/reports/notes") } class={ navClass(shell.Active == "notes") }>
+			@navIcon("statements")
+			Catatan (CaLK)
+		</a>
 		<a href={ companyPath(shell.CompanyKey, "/adjustments") } class={ navClass(shell.Active == "adjustments") }>
 			@navIcon("adjustments")
 			Jurnal Penyesuaian

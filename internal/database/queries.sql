@@ -656,3 +656,94 @@ DELETE FROM signup_drafts WHERE expires_at < now();
 
 -- name: UsernameTaken :one
 SELECT EXISTS (SELECT 1 FROM users WHERE lower(username) = lower(@username)) AS taken;
+
+-- Mutasi akun pada rentang tanggal tertentu, TANPA jurnal saldo awal (kind=opening)
+-- dan jurnal penutup (kind=closing). Dipakai Laporan Perubahan Ekuitas (untuk
+-- transaksi dengan pemilik), Laporan Arus Kas (metode tidak langsung), dan
+-- perhitungan laba periode berjalan yang belum dipengaruhi jurnal penutup.
+-- name: ListAccountTotalsMovements :many
+SELECT
+    a.id,
+    a.code,
+    a.name,
+    a.account_type,
+    a.sub_type,
+    a.psak_line,
+    a.normal_balance,
+    COALESCE(t.total_debit, 0)::NUMERIC(20, 2)  AS total_debit,
+    COALESCE(t.total_credit, 0)::NUMERIC(20, 2) AS total_credit
+FROM accounts a
+LEFT JOIN (
+    SELECT
+        le.account_id,
+        le.company_id,
+        SUM(le.debit)  AS total_debit,
+        SUM(le.credit) AS total_credit
+    FROM ledger_entries le
+    JOIN journals j ON j.id = le.journal_id AND j.company_id = le.company_id
+    WHERE j.journal_date >= @date_from AND j.journal_date <= @date_to
+      AND j.kind NOT IN ('opening', 'closing')
+    GROUP BY le.account_id, le.company_id
+) t ON t.account_id = a.id AND t.company_id = a.company_id
+WHERE a.company_id = @company_id AND a.is_active = TRUE
+ORDER BY a.code;
+
+-- Mutasi akun dari jurnal penutup (kind=closing) pada rentang tanggal tertentu.
+-- Dalam Laporan Perubahan Ekuitas mutasi ini adalah pemindahan laba periode ke
+-- akun saldo laba, bukan transaksi dengan pemilik.
+-- name: ListAccountTotalsClosing :many
+SELECT
+    a.id,
+    a.code,
+    a.name,
+    a.account_type,
+    a.sub_type,
+    a.psak_line,
+    a.normal_balance,
+    COALESCE(t.total_debit, 0)::NUMERIC(20, 2)  AS total_debit,
+    COALESCE(t.total_credit, 0)::NUMERIC(20, 2) AS total_credit
+FROM accounts a
+LEFT JOIN (
+    SELECT
+        le.account_id,
+        le.company_id,
+        SUM(le.debit)  AS total_debit,
+        SUM(le.credit) AS total_credit
+    FROM ledger_entries le
+    JOIN journals j ON j.id = le.journal_id AND j.company_id = le.company_id
+    WHERE j.journal_date >= @date_from AND j.journal_date <= @date_to
+      AND j.kind = 'closing'
+    GROUP BY le.account_id, le.company_id
+) t ON t.account_id = a.id AND t.company_id = a.company_id
+WHERE a.company_id = @company_id AND a.is_active = TRUE
+ORDER BY a.code;
+
+-- Saldo awal akun sebelum tanggal mulai laporan, termasuk jurnal saldo awal
+-- (kind=opening) yang memang bertanggal awal periode pertama. Dipakai untuk
+-- saldo awal Laporan Perubahan Ekuitas dan saldo awal kas pada Laporan Arus Kas.
+-- name: ListAccountTotalsOpening :many
+SELECT
+    a.id,
+    a.code,
+    a.name,
+    a.account_type,
+    a.sub_type,
+    a.psak_line,
+    a.normal_balance,
+    COALESCE(t.total_debit, 0)::NUMERIC(20, 2)  AS total_debit,
+    COALESCE(t.total_credit, 0)::NUMERIC(20, 2) AS total_credit
+FROM accounts a
+LEFT JOIN (
+    SELECT
+        le.account_id,
+        le.company_id,
+        SUM(le.debit)  AS total_debit,
+        SUM(le.credit) AS total_credit
+    FROM ledger_entries le
+    JOIN journals j ON j.id = le.journal_id AND j.company_id = le.company_id
+    WHERE j.journal_date < @date_from
+       OR (j.kind = 'opening' AND j.journal_date <= @date_to)
+    GROUP BY le.account_id, le.company_id
+) t ON t.account_id = a.id AND t.company_id = a.company_id
+WHERE a.company_id = @company_id AND a.is_active = TRUE
+ORDER BY a.code;

@@ -224,6 +224,9 @@ func main() {
 	}
 	fmt.Println("PASS trigger check_journal_balanced menolak baris tunggal")
 
+	// 9. Bukti laporan Stage 2b: Perubahan Ekuitas, Arus Kas, CaLK.
+	evidenceReports(ctx, pool, q, userID)
+
 	fmt.Println("SEMUA SMOKE TEST LULUS")
 }
 

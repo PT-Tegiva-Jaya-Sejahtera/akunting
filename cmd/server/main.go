@@ -193,6 +193,9 @@ func newRouter(pool *pgxpool.Pool, queries *db.Queries, h *handlers.Handlers) ht
 			r.Get("/reports", h.ReportsGet)
 			r.Get("/reports/pl", h.ReportsPLGet)
 			r.Get("/reports/bs", h.ReportsBSGet)
+			r.Get("/reports/equity", h.ReportsEquityGet)
+			r.Get("/reports/cashflow", h.ReportsCashFlowGet)
+			r.Get("/reports/notes", h.ReportsNotesGet)
 			r.Get("/reports/pl/pdf", h.ReportsPLPdfGet)
 			r.Get("/reports/bs/pdf", h.ReportsBSPdfGet)
 

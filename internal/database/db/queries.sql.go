@@ -1633,6 +1633,244 @@ func (q *Queries) ListAccountTotalsByPeriodPlain(ctx context.Context, arg ListAc
 	return items, nil
 }
 
+const listAccountTotalsClosing = `-- name: ListAccountTotalsClosing :many
+SELECT
+    a.id,
+    a.code,
+    a.name,
+    a.account_type,
+    a.sub_type,
+    a.psak_line,
+    a.normal_balance,
+    COALESCE(t.total_debit, 0)::NUMERIC(20, 2)  AS total_debit,
+    COALESCE(t.total_credit, 0)::NUMERIC(20, 2) AS total_credit
+FROM accounts a
+LEFT JOIN (
+    SELECT
+        le.account_id,
+        le.company_id,
+        SUM(le.debit)  AS total_debit,
+        SUM(le.credit) AS total_credit
+    FROM ledger_entries le
+    JOIN journals j ON j.id = le.journal_id AND j.company_id = le.company_id
+    WHERE j.journal_date >= $1 AND j.journal_date <= $2
+      AND j.kind = 'closing'
+    GROUP BY le.account_id, le.company_id
+) t ON t.account_id = a.id AND t.company_id = a.company_id
+WHERE a.company_id = $3 AND a.is_active = TRUE
+ORDER BY a.code
+`
+
+type ListAccountTotalsClosingParams struct {
+	DateFrom  pgtype.Date
+	DateTo    pgtype.Date
+	CompanyID int64
+}
+
+type ListAccountTotalsClosingRow struct {
+	ID            int64
+	Code          string
+	Name          string
+	AccountType   AccountType
+	SubType       string
+	PsakLine      string
+	NormalBalance NormalBalance
+	TotalDebit    pgtype.Numeric
+	TotalCredit   pgtype.Numeric
+}
+
+// Mutasi akun dari jurnal penutup (kind=closing) pada rentang tanggal tertentu.
+// Dalam Laporan Perubahan Ekuitas mutasi ini adalah pemindahan laba periode ke
+// akun saldo laba, bukan transaksi dengan pemilik.
+func (q *Queries) ListAccountTotalsClosing(ctx context.Context, arg ListAccountTotalsClosingParams) ([]ListAccountTotalsClosingRow, error) {
+	rows, err := q.db.Query(ctx, listAccountTotalsClosing, arg.DateFrom, arg.DateTo, arg.CompanyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAccountTotalsClosingRow{}
+	for rows.Next() {
+		var i ListAccountTotalsClosingRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.AccountType,
+			&i.SubType,
+			&i.PsakLine,
+			&i.NormalBalance,
+			&i.TotalDebit,
+			&i.TotalCredit,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAccountTotalsMovements = `-- name: ListAccountTotalsMovements :many
+SELECT
+    a.id,
+    a.code,
+    a.name,
+    a.account_type,
+    a.sub_type,
+    a.psak_line,
+    a.normal_balance,
+    COALESCE(t.total_debit, 0)::NUMERIC(20, 2)  AS total_debit,
+    COALESCE(t.total_credit, 0)::NUMERIC(20, 2) AS total_credit
+FROM accounts a
+LEFT JOIN (
+    SELECT
+        le.account_id,
+        le.company_id,
+        SUM(le.debit)  AS total_debit,
+        SUM(le.credit) AS total_credit
+    FROM ledger_entries le
+    JOIN journals j ON j.id = le.journal_id AND j.company_id = le.company_id
+    WHERE j.journal_date >= $1 AND j.journal_date <= $2
+      AND j.kind NOT IN ('opening', 'closing')
+    GROUP BY le.account_id, le.company_id
+) t ON t.account_id = a.id AND t.company_id = a.company_id
+WHERE a.company_id = $3 AND a.is_active = TRUE
+ORDER BY a.code
+`
+
+type ListAccountTotalsMovementsParams struct {
+	DateFrom  pgtype.Date
+	DateTo    pgtype.Date
+	CompanyID int64
+}
+
+type ListAccountTotalsMovementsRow struct {
+	ID            int64
+	Code          string
+	Name          string
+	AccountType   AccountType
+	SubType       string
+	PsakLine      string
+	NormalBalance NormalBalance
+	TotalDebit    pgtype.Numeric
+	TotalCredit   pgtype.Numeric
+}
+
+// Mutasi akun pada rentang tanggal tertentu, TANPA jurnal saldo awal (kind=opening)
+// dan jurnal penutup (kind=closing). Dipakai Laporan Perubahan Ekuitas (untuk
+// transaksi dengan pemilik), Laporan Arus Kas (metode tidak langsung), dan
+// perhitungan laba periode berjalan yang belum dipengaruhi jurnal penutup.
+func (q *Queries) ListAccountTotalsMovements(ctx context.Context, arg ListAccountTotalsMovementsParams) ([]ListAccountTotalsMovementsRow, error) {
+	rows, err := q.db.Query(ctx, listAccountTotalsMovements, arg.DateFrom, arg.DateTo, arg.CompanyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAccountTotalsMovementsRow{}
+	for rows.Next() {
+		var i ListAccountTotalsMovementsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.AccountType,
+			&i.SubType,
+			&i.PsakLine,
+			&i.NormalBalance,
+			&i.TotalDebit,
+			&i.TotalCredit,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAccountTotalsOpening = `-- name: ListAccountTotalsOpening :many
+SELECT
+    a.id,
+    a.code,
+    a.name,
+    a.account_type,
+    a.sub_type,
+    a.psak_line,
+    a.normal_balance,
+    COALESCE(t.total_debit, 0)::NUMERIC(20, 2)  AS total_debit,
+    COALESCE(t.total_credit, 0)::NUMERIC(20, 2) AS total_credit
+FROM accounts a
+LEFT JOIN (
+    SELECT
+        le.account_id,
+        le.company_id,
+        SUM(le.debit)  AS total_debit,
+        SUM(le.credit) AS total_credit
+    FROM ledger_entries le
+    JOIN journals j ON j.id = le.journal_id AND j.company_id = le.company_id
+    WHERE j.journal_date < $1
+       OR (j.kind = 'opening' AND j.journal_date <= $2)
+    GROUP BY le.account_id, le.company_id
+) t ON t.account_id = a.id AND t.company_id = a.company_id
+WHERE a.company_id = $3 AND a.is_active = TRUE
+ORDER BY a.code
+`
+
+type ListAccountTotalsOpeningParams struct {
+	DateFrom  pgtype.Date
+	DateTo    pgtype.Date
+	CompanyID int64
+}
+
+type ListAccountTotalsOpeningRow struct {
+	ID            int64
+	Code          string
+	Name          string
+	AccountType   AccountType
+	SubType       string
+	PsakLine      string
+	NormalBalance NormalBalance
+	TotalDebit    pgtype.Numeric
+	TotalCredit   pgtype.Numeric
+}
+
+// Saldo awal akun sebelum tanggal mulai laporan, termasuk jurnal saldo awal
+// (kind=opening) yang memang bertanggal awal periode pertama. Dipakai untuk
+// saldo awal Laporan Perubahan Ekuitas dan saldo awal kas pada Laporan Arus Kas.
+func (q *Queries) ListAccountTotalsOpening(ctx context.Context, arg ListAccountTotalsOpeningParams) ([]ListAccountTotalsOpeningRow, error) {
+	rows, err := q.db.Query(ctx, listAccountTotalsOpening, arg.DateFrom, arg.DateTo, arg.CompanyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAccountTotalsOpeningRow{}
+	for rows.Next() {
+		var i ListAccountTotalsOpeningRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.AccountType,
+			&i.SubType,
+			&i.PsakLine,
+			&i.NormalBalance,
+			&i.TotalDebit,
+			&i.TotalCredit,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAccounts = `-- name: ListAccounts :many
 SELECT id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line
 FROM accounts

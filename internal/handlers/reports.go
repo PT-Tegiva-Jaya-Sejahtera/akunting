@@ -42,14 +42,23 @@ func (h *Handlers) renderReport(w http.ResponseWriter, r *http.Request, mode, ac
 		company, view).Render(r.Context(), w)
 }
 
-// reportView menyusun angka laporan untuk mode tertentu: "pl" hanya laba rugi,
-// "bs" hanya posisi keuangan, mode lain keduanya. Setiap laporan memuat kolom
-// periode berjalan dan kolom periode pembanding (PSAK 201 par. 38).
-func (h *Handlers) reportView(w http.ResponseWriter, r *http.Request, company db.Company, mode string) (models.ReportView, bool) {
+// reportWindow adalah periode berjalan, periode pembanding, dan bagian identitas
+// laporan yang dipakai seluruh jenis laporan keuangan.
+type reportWindow struct {
+	view models.ReportView
+	from time.Time // tanggal mulai periode berjalan
+	to   time.Time // tanggal akhir periode berjalan
+	cmp  compareWindow
+}
+
+// reportWindow menyelesaikan periode berjalan dan periode pembanding dari
+// parameter URL (period, from, to, compare), lalu mengisi bagian identitas
+// laporan (PSAK 201 par. 49-53) pada ReportView.
+func (h *Handlers) reportWindow(w http.ResponseWriter, r *http.Request, company db.Company, mode string) (reportWindow, bool) {
 	periods, err := h.DB.ListFiscalPeriods(r.Context(), company.ID)
 	if err != nil {
 		http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
-		return models.ReportView{}, false
+		return reportWindow{}, false
 	}
 
 	selected := selectPeriod(periods, r.URL.Query().Get("period"))
@@ -78,7 +87,7 @@ func (h *Handlers) reportView(w http.ResponseWriter, r *http.Request, company db
 		toT, err2 = models.ParseDateID(dateTo)
 		if err1 != nil || err2 != nil || fromT.After(toT) {
 			http.Error(w, "400 rentang tanggal harus berformat dd/mm/yyyy dan urut", http.StatusBadRequest)
-			return models.ReportView{}, false
+			return reportWindow{}, false
 		}
 		view.PeriodName = "Rentang " + dateFrom + " s.d. " + dateTo
 	case selected != nil:
@@ -122,16 +131,32 @@ func (h *Handlers) reportView(w http.ResponseWriter, r *http.Request, company db
 	if id, err := strconv.ParseInt(r.URL.Query().Get("compare"), 10, 64); err == nil && cmp.ok {
 		view.ComparePeriodID = id
 	}
+	return reportWindow{view: view, from: fromT, to: toT, cmp: cmp}, true
+}
+
+// reportView menyusun angka laporan untuk mode tertentu: "pl" hanya laba rugi,
+// "bs" hanya posisi keuangan, mode lain keduanya. Setiap laporan memuat kolom
+// periode berjalan dan kolom periode pembanding (PSAK 201 par. 38).
+func (h *Handlers) reportView(w http.ResponseWriter, r *http.Request, company db.Company, mode string) (models.ReportView, bool) {
+	win, ok := h.reportWindow(w, r, company, mode)
+	if !ok {
+		return models.ReportView{}, false
+	}
+	view := win.view
+	fromT, toT, cmp := win.from, win.to, win.cmp
 
 	if mode != "bs" {
-		periodRows, err := h.periodRows(r.Context(), company.ID, fromT, toT)
+		// Laba rugi dihitung dari mutasi periode berjalan tanpa jurnal penutup,
+		// supaya periode yang sudah ditutup bukunya tetap menampilkan laba
+		// rugi periode itu, bukan angka nol.
+		periodRows, err := h.periodMovementRows(r.Context(), company.ID, fromT, toT)
 		if err != nil {
 			http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
 			return models.ReportView{}, false
 		}
 		var priorRows []db.ListAccountTotalsByPeriodRow
 		if cmp.ok {
-			priorRows, err = h.periodRows(r.Context(), company.ID, cmp.from, cmp.to)
+			priorRows, err = h.periodMovementRows(r.Context(), company.ID, cmp.from, cmp.to)
 			if err != nil {
 				http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
 				return models.ReportView{}, false
@@ -268,6 +293,37 @@ func (h *Handlers) periodRows(ctx context.Context, companyID int64, from, to tim
 		DateFrom:  pgtype.Date{Time: from, Valid: true, InfinityModifier: pgtype.Finite},
 		DateTo:    pgtype.Date{Time: to, Valid: true, InfinityModifier: pgtype.Finite},
 	})
+}
+
+// periodMovementRows mengambil mutasi akun satu rentang waktu tanpa jurnal
+// saldo awal (kind=opening) dan jurnal penutup (kind=closing). Dipakai untuk
+// laba rugi periode berjalan supaya periode yang sudah ditutup bukunya tetap
+// menampilkan angka periode itu. Bentuk barisnya disamakan dengan
+// ListAccountTotalsByPeriod agar perakit laporan bisa dipakai bersama.
+func (h *Handlers) periodMovementRows(ctx context.Context, companyID int64, from, to time.Time) ([]db.ListAccountTotalsByPeriodRow, error) {
+	rows, err := h.DB.ListAccountTotalsMovements(ctx, db.ListAccountTotalsMovementsParams{
+		CompanyID: companyID,
+		DateFrom:  pgtype.Date{Time: from, Valid: true, InfinityModifier: pgtype.Finite},
+		DateTo:    pgtype.Date{Time: to, Valid: true, InfinityModifier: pgtype.Finite},
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]db.ListAccountTotalsByPeriodRow, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, db.ListAccountTotalsByPeriodRow{
+			ID:            r.ID,
+			Code:          r.Code,
+			Name:          r.Name,
+			AccountType:   r.AccountType,
+			SubType:       r.SubType,
+			PsakLine:      r.PsakLine,
+			NormalBalance: r.NormalBalance,
+			TotalDebit:    r.TotalDebit,
+			TotalCredit:   r.TotalCredit,
+		})
+	}
+	return out, nil
 }
 
 // plBlock adalah hasil pengelompokkan akun laba rugi untuk satu rentang waktu.
