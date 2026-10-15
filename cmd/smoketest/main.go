@@ -227,6 +227,9 @@ func main() {
 	// 9. Bukti laporan Stage 2b: Perubahan Ekuitas, Arus Kas, CaLK.
 	evidenceReports(ctx, pool, q, userID)
 
+	// 10. Bukti subledger piutang usaha + aging (Stage 3a).
+	evidenceReceivables(ctx, pool, q, userID)
+
 	fmt.Println("SEMUA SMOKE TEST LULUS")
 }
 

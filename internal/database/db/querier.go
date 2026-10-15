@@ -121,6 +121,14 @@ type Querier interface {
 	// Kunci jurnal (tanggal dan referensi) untuk mendeteksi import berganda.
 	ListJournalKeys(ctx context.Context, companyID int64) ([]ListJournalKeysRow, error)
 	ListJournals(ctx context.Context, arg ListJournalsParams) ([]Journal, error)
+	// ============================================================
+	// Subledger piutang usaha (Stage 3a)
+	// ============================================================
+	// Mutasi piutang per jurnal sampai tanggal laporan: dasar open item untuk
+	// aging. Hanya akun bertanda is_receivable dan jurnal posted yang dihitung.
+	// Jurnal tanpa pihak tetap disertakan (party_id 0) supaya jumlah subledger
+	// selalu sama dengan saldo akun piutang pada buku besar.
+	ListReceivableMovements(ctx context.Context, arg ListReceivableMovementsParams) ([]ListReceivableMovementsRow, error)
 	ListRecentJournals(ctx context.Context, arg ListRecentJournalsParams) ([]Journal, error)
 	MarkInvitationUsed(ctx context.Context, arg MarkInvitationUsedParams) (int64, error)
 	// ============================================================

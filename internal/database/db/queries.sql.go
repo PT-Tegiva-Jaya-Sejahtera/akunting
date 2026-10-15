@@ -80,7 +80,7 @@ const createAccount = `-- name: CreateAccount :one
 
 INSERT INTO accounts (company_id, code, name, account_type, sub_type, normal_balance, system_role, psak_line)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line
+RETURNING id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line, is_receivable
 `
 
 type CreateAccountParams struct {
@@ -121,6 +121,7 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.SubType,
 		&i.SystemRole,
 		&i.PsakLine,
+		&i.IsReceivable,
 	)
 	return i, err
 }
@@ -751,7 +752,7 @@ func (q *Queries) ExportJournalLines(ctx context.Context, arg ExportJournalLines
 }
 
 const getAccountBySystemRole = `-- name: GetAccountBySystemRole :one
-SELECT id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line
+SELECT id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line, is_receivable
 FROM accounts
 WHERE company_id = $1 AND system_role = $2
 `
@@ -776,6 +777,7 @@ func (q *Queries) GetAccountBySystemRole(ctx context.Context, arg GetAccountBySy
 		&i.SubType,
 		&i.SystemRole,
 		&i.PsakLine,
+		&i.IsReceivable,
 	)
 	return i, err
 }
@@ -954,7 +956,7 @@ func (q *Queries) GetInvitationByToken(ctx context.Context, token string) (Invit
 }
 
 const getJournalByID = `-- name: GetJournalByID :one
-SELECT id, company_id, journal_date, reference, memo, status, created_by, created_at, kind, period_id, is_adjusting
+SELECT id, company_id, journal_date, reference, memo, status, created_by, created_at, kind, period_id, is_adjusting, party_id, due_date
 FROM journals
 WHERE id = $1 AND company_id = $2
 `
@@ -979,6 +981,8 @@ func (q *Queries) GetJournalByID(ctx context.Context, arg GetJournalByIDParams) 
 		&i.Kind,
 		&i.PeriodID,
 		&i.IsAdjusting,
+		&i.PartyID,
+		&i.DueDate,
 	)
 	return i, err
 }
@@ -1109,7 +1113,7 @@ func (q *Queries) GetSignupDraft(ctx context.Context, tokenHash string) (SignupD
 }
 
 const getSystemJournals = `-- name: GetSystemJournals :many
-SELECT id, company_id, journal_date, reference, memo, status, created_by, created_at, kind, period_id, is_adjusting
+SELECT id, company_id, journal_date, reference, memo, status, created_by, created_at, kind, period_id, is_adjusting, party_id, due_date
 FROM journals
 WHERE company_id = $1 AND kind = $2
 ORDER BY id
@@ -1141,6 +1145,8 @@ func (q *Queries) GetSystemJournals(ctx context.Context, arg GetSystemJournalsPa
 			&i.Kind,
 			&i.PeriodID,
 			&i.IsAdjusting,
+			&i.PartyID,
+			&i.DueDate,
 		); err != nil {
 			return nil, err
 		}
@@ -1872,7 +1878,7 @@ func (q *Queries) ListAccountTotalsOpening(ctx context.Context, arg ListAccountT
 }
 
 const listAccounts = `-- name: ListAccounts :many
-SELECT id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line
+SELECT id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line, is_receivable
 FROM accounts
 WHERE company_id = $1 AND is_active = TRUE
 ORDER BY code
@@ -1899,6 +1905,7 @@ func (q *Queries) ListAccounts(ctx context.Context, companyID int64) ([]Account,
 			&i.SubType,
 			&i.SystemRole,
 			&i.PsakLine,
+			&i.IsReceivable,
 		); err != nil {
 			return nil, err
 		}
@@ -1911,7 +1918,7 @@ func (q *Queries) ListAccounts(ctx context.Context, companyID int64) ([]Account,
 }
 
 const listAccountsAll = `-- name: ListAccountsAll :many
-SELECT id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line
+SELECT id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line, is_receivable
 FROM accounts
 WHERE company_id = $1
 ORDER BY code
@@ -1938,6 +1945,7 @@ func (q *Queries) ListAccountsAll(ctx context.Context, companyID int64) ([]Accou
 			&i.SubType,
 			&i.SystemRole,
 			&i.PsakLine,
+			&i.IsReceivable,
 		); err != nil {
 			return nil, err
 		}
@@ -1950,7 +1958,7 @@ func (q *Queries) ListAccountsAll(ctx context.Context, companyID int64) ([]Accou
 }
 
 const listAdjustingJournals = `-- name: ListAdjustingJournals :many
-SELECT id, company_id, journal_date, reference, memo, status, created_by, created_at, kind, period_id, is_adjusting
+SELECT id, company_id, journal_date, reference, memo, status, created_by, created_at, kind, period_id, is_adjusting, party_id, due_date
 FROM journals
 WHERE company_id = $1
   AND is_adjusting = TRUE
@@ -1984,6 +1992,8 @@ func (q *Queries) ListAdjustingJournals(ctx context.Context, arg ListAdjustingJo
 			&i.Kind,
 			&i.PeriodID,
 			&i.IsAdjusting,
+			&i.PartyID,
+			&i.DueDate,
 		); err != nil {
 			return nil, err
 		}
@@ -2302,7 +2312,7 @@ func (q *Queries) ListJournalKeys(ctx context.Context, companyID int64) ([]ListJ
 }
 
 const listJournals = `-- name: ListJournals :many
-SELECT id, company_id, journal_date, reference, memo, status, created_by, created_at, kind, period_id, is_adjusting
+SELECT id, company_id, journal_date, reference, memo, status, created_by, created_at, kind, period_id, is_adjusting, party_id, due_date
 FROM journals
 WHERE company_id = $1
   AND journal_date >= $2
@@ -2346,6 +2356,83 @@ func (q *Queries) ListJournals(ctx context.Context, arg ListJournalsParams) ([]J
 			&i.Kind,
 			&i.PeriodID,
 			&i.IsAdjusting,
+			&i.PartyID,
+			&i.DueDate,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listReceivableMovements = `-- name: ListReceivableMovements :many
+
+SELECT
+    j.id AS journal_id,
+    COALESCE(j.party_id, 0) AS party_id,
+    COALESCE(p.name, '') AS party_name,
+    j.reference,
+    j.journal_date,
+    j.due_date,
+    COALESCE(SUM(le.debit), 0)::NUMERIC(20, 2) AS total_debit,
+    COALESCE(SUM(le.credit), 0)::NUMERIC(20, 2) AS total_credit
+FROM journals j
+JOIN ledger_entries le ON le.journal_id = j.id AND le.company_id = j.company_id
+JOIN accounts a ON a.id = le.account_id AND a.company_id = le.company_id
+LEFT JOIN parties p ON p.id = j.party_id AND p.company_id = j.company_id
+WHERE j.company_id = $1
+  AND j.status = 'posted'
+  AND j.journal_date <= $2
+  AND a.is_receivable
+GROUP BY j.id, j.party_id, p.name, j.reference, j.journal_date, j.due_date
+ORDER BY j.journal_date, j.id
+`
+
+type ListReceivableMovementsParams struct {
+	CompanyID int64
+	AsOf      pgtype.Date
+}
+
+type ListReceivableMovementsRow struct {
+	JournalID   int64
+	PartyID     int64
+	PartyName   string
+	Reference   string
+	JournalDate pgtype.Date
+	DueDate     pgtype.Date
+	TotalDebit  pgtype.Numeric
+	TotalCredit pgtype.Numeric
+}
+
+// ============================================================
+// Subledger piutang usaha (Stage 3a)
+// ============================================================
+// Mutasi piutang per jurnal sampai tanggal laporan: dasar open item untuk
+// aging. Hanya akun bertanda is_receivable dan jurnal posted yang dihitung.
+// Jurnal tanpa pihak tetap disertakan (party_id 0) supaya jumlah subledger
+// selalu sama dengan saldo akun piutang pada buku besar.
+func (q *Queries) ListReceivableMovements(ctx context.Context, arg ListReceivableMovementsParams) ([]ListReceivableMovementsRow, error) {
+	rows, err := q.db.Query(ctx, listReceivableMovements, arg.CompanyID, arg.AsOf)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListReceivableMovementsRow{}
+	for rows.Next() {
+		var i ListReceivableMovementsRow
+		if err := rows.Scan(
+			&i.JournalID,
+			&i.PartyID,
+			&i.PartyName,
+			&i.Reference,
+			&i.JournalDate,
+			&i.DueDate,
+			&i.TotalDebit,
+			&i.TotalCredit,
 		); err != nil {
 			return nil, err
 		}
@@ -2358,7 +2445,7 @@ func (q *Queries) ListJournals(ctx context.Context, arg ListJournalsParams) ([]J
 }
 
 const listRecentJournals = `-- name: ListRecentJournals :many
-SELECT id, company_id, journal_date, reference, memo, status, created_by, created_at, kind, period_id, is_adjusting
+SELECT id, company_id, journal_date, reference, memo, status, created_by, created_at, kind, period_id, is_adjusting, party_id, due_date
 FROM journals
 WHERE company_id = $1
 ORDER BY journal_date DESC, id DESC
@@ -2391,6 +2478,8 @@ func (q *Queries) ListRecentJournals(ctx context.Context, arg ListRecentJournals
 			&i.Kind,
 			&i.PeriodID,
 			&i.IsAdjusting,
+			&i.PartyID,
+			&i.DueDate,
 		); err != nil {
 			return nil, err
 		}

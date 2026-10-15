@@ -270,6 +270,48 @@ func (ns NullNormalBalance) Value() (driver.Value, error) {
 	return string(ns.NormalBalance), nil
 }
 
+type PartyType string
+
+const (
+	PartyTypeCustomer PartyType = "customer"
+	PartyTypeSupplier PartyType = "supplier"
+)
+
+func (e *PartyType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PartyType(s)
+	case string:
+		*e = PartyType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PartyType: %T", src)
+	}
+	return nil
+}
+
+type NullPartyType struct {
+	PartyType PartyType
+	Valid     bool // Valid is true if PartyType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPartyType) Scan(value interface{}) error {
+	if value == nil {
+		ns.PartyType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PartyType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPartyType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PartyType), nil
+}
+
 type PeriodStatus string
 
 const (
@@ -366,6 +408,7 @@ type Account struct {
 	SubType       string
 	SystemRole    string
 	PsakLine      string
+	IsReceivable  bool
 }
 
 type Company struct {
@@ -434,6 +477,8 @@ type Journal struct {
 	Kind        JournalKind
 	PeriodID    pgtype.Int8
 	IsAdjusting bool
+	PartyID     pgtype.Int8
+	DueDate     pgtype.Date
 }
 
 type LedgerEntry struct {
@@ -445,6 +490,16 @@ type LedgerEntry struct {
 	Debit       pgtype.Numeric
 	Credit      pgtype.Numeric
 	CreatedAt   pgtype.Timestamptz
+}
+
+type Party struct {
+	ID        int64
+	CompanyID int64
+	PartyType PartyType
+	Name      string
+	Code      string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
 }
 
 type Session struct {
