@@ -162,7 +162,7 @@ func (h *Handlers) reportView(w http.ResponseWriter, r *http.Request, company db
 				return models.ReportView{}, false
 			}
 		}
-		applyProfitLoss(&view, assemblePL(periodRows), assemblePL(priorRows))
+		applyProfitLoss(&view, assemblePL(periodRows), assemblePL(priorRows), company.TaxRate)
 	}
 	if mode != "pl" {
 		// Neraca selalu disusun sejak awal catatan agar ekuitas dan aset seimbang.
@@ -180,9 +180,46 @@ func (h *Handlers) reportView(w http.ResponseWriter, r *http.Request, company db
 				return models.ReportView{}, false
 			}
 		}
-		applyBalanceSheet(&view, assembleBS(allRows), assembleBS(priorAllRows))
+		// Pajak kini dihitung atas mutasi periode laporan (tanpa jurnal saldo
+		// awal/penutup), sama dengan basis beban pajak di Laporan Laba Rugi dan
+		// Laporan Perubahan Ekuitas, supaya ketiga laporan selalu konsisten.
+		movRows, err := h.periodMovementRows(r.Context(), company.ID, fromT, toT)
+		if err != nil {
+			http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
+			return models.ReportView{}, false
+		}
+		curTax := models.AccrueTax(keAccountTotals(movRows), company.TaxRate)
+		priTax := models.TaxAccrual{}
+		if cmp.ok {
+			priMovRows, err := h.periodMovementRows(r.Context(), company.ID, cmp.from, cmp.to)
+			if err != nil {
+				http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
+				return models.ReportView{}, false
+			}
+			priTax = models.AccrueTax(keAccountTotals(priMovRows), company.TaxRate)
+		}
+		applyBalanceSheet(&view, assembleBS(allRows), assembleBS(priorAllRows), curTax, priTax)
 	}
 	return view, true
+}
+
+// keAccountTotals mengubah baris ringkasan akun menjadi models.AccountTotal
+// supaya perhitungan pajak bisa dilakukan oleh model.
+func keAccountTotals(rows []db.ListAccountTotalsByPeriodRow) []models.AccountTotal {
+	out := make([]models.AccountTotal, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, models.AccountTotal{
+			ID:          r.ID,
+			Code:        r.Code,
+			Name:        r.Name,
+			AccountType: string(r.AccountType),
+			SubType:     r.SubType,
+			PsakLine:    r.PsakLine,
+			DebitCents:  models.NumericToCents(r.TotalDebit),
+			CreditCents: models.NumericToCents(r.TotalCredit),
+		})
+	}
+	return out
 }
 
 // compareWindow adalah jendela waktu periode pembanding beserta label kolomnya.
@@ -375,7 +412,13 @@ func assemblePL(rows []db.ListAccountTotalsByPeriodRow) plBlock {
 
 // applyProfitLoss menyalin angka periode berjalan dan pembanding ke view,
 // dengan baris digabung berdasarkan kode akun supaya kedua kolom sejajar.
-func applyProfitLoss(view *models.ReportView, cur, pri plBlock) {
+//
+// Beban pajak (PSAK 212): "Jumlah Beban Pajak" selalu = laba sebelum pajak x
+// tarif perusahaan (0 bila rugi), dihitung oleh models.CurrentTax. Beban pajak
+// yang sudah dibukukan lewat jurnal tetap tampil sebagai baris tersendiri dan
+// direkonsiliasi lewat baris koreksi, supaya tidak ada pos yang hilang maupun
+// terhitung dua kali.
+func applyProfitLoss(view *models.ReportView, cur, pri plBlock, rate pgtype.Numeric) {
 	view.Revenue = mergeLines(cur.revenue, pri.revenue)
 	view.TotalRevenue = cur.totalRevenue
 	view.PriorTotalRevenue = pri.totalRevenue
@@ -394,12 +437,34 @@ func applyProfitLoss(view *models.ReportView, cur, pri plBlock) {
 	view.ProfitBeforeTax = view.OperatingProfit - cur.totalFinance
 	view.PriorProfitBeforeTax = view.PriorOperatingProfit - pri.totalFinance
 
+	curTax := models.CurrentTax(view.ProfitBeforeTax, rate)
+	priTax := models.CurrentTax(view.PriorProfitBeforeTax, rate)
 	view.TaxExpense = mergeLines(cur.tax, pri.tax)
-	view.TotalTaxExpense = cur.totalTax
-	view.PriorTotalTaxExpense = pri.totalTax
+	if curTax != cur.totalTax || priTax != pri.totalTax {
+		view.TaxExpense = append(view.TaxExpense, taxKoreksiLine(rate, cur.totalTax, pri.totalTax,
+			curTax-cur.totalTax, priTax-pri.totalTax))
+	}
+	view.TotalTaxExpense = curTax
+	view.PriorTotalTaxExpense = priTax
 
-	view.NetIncome = view.ProfitBeforeTax - cur.totalTax
-	view.PriorNetIncome = view.PriorProfitBeforeTax - pri.totalTax
+	view.NetIncome = view.ProfitBeforeTax - curTax
+	view.PriorNetIncome = view.PriorProfitBeforeTax - priTax
+}
+
+// taxKoreksiLine membuat baris beban pajak kini pada Laporan Laba Rugi:
+// angkanya adalah selisih beban pajak menurut tarif dengan beban pajak yang
+// sudah dibukukan lewat jurnal. Bila belum ada yang dibukukan, baris ini
+// langsung menjadi "Beban Pajak Penghasilan Kini".
+func taxKoreksiLine(rate pgtype.Numeric, bookedCur, bookedPri, adjCur, adjPri int64) models.ReportLine {
+	label := "Beban Pajak Penghasilan Kini"
+	if bookedCur != 0 || bookedPri != 0 {
+		label = "Koreksi Beban Pajak Kini"
+	}
+	return models.ReportLine{
+		Name:             label + " (estimasi tarif " + models.RatePercent(rate) + ")",
+		AmountCents:      adjCur,
+		PriorAmountCents: adjPri,
+	}
 }
 
 // bsBlock adalah hasil pengelompokkan akun laporan posisi keuangan untuk satu
@@ -465,7 +530,13 @@ func assembleBS(rows []db.ListAccountTotalsByPeriodRow) bsBlock {
 
 // applyBalanceSheet menyalin angka neraca periode berjalan dan pembanding ke
 // view dengan baris digabung berdasarkan kode akun.
-func applyBalanceSheet(view *models.ReportView, cur, pri bsBlock) {
+//
+// Pajak kini (PSAK 212): liabilitas pajak kini disajikan sebagai baris
+// tersendiri pada liabilitas jangka pendek, dan beban pajak kini yang belum
+// dibukukan lewat jurnal mengurangi laba belum ditutup pada sisi ekuitas,
+// sehingga A = L + E tetap berlaku tanpa memalsukan angka. Basisnya mutasi
+// periode laporan, sama dengan beban pajak pada Laporan Laba Rugi.
+func applyBalanceSheet(view *models.ReportView, cur, pri bsBlock, curTax, priTax models.TaxAccrual) {
 	view.CurrentAssets = mergeLines(cur.currentAssets, pri.currentAssets)
 	view.TotalCurrentAssets = cur.totalCurrentAssets
 	view.PriorTotalCurrentAssets = pri.totalCurrentAssets
@@ -477,27 +548,40 @@ func applyBalanceSheet(view *models.ReportView, cur, pri bsBlock) {
 	view.TotalAssets = cur.totalCurrentAssets + cur.totalNonCurrent
 	view.PriorTotalAssets = pri.totalCurrentAssets + pri.totalNonCurrent
 
+	// Utang pajak kini = beban pajak kini periode laporan yang belum
+	// dibukukan/dibayar lewat jurnal (laba sebelum pajak x tarif - beban
+	// pajak terbukukan).
+	taxLiab := curTax.CurrentTaxCents - curTax.BookedTaxCents
+	priTaxLiab := priTax.CurrentTaxCents - priTax.BookedTaxCents
 	view.CurrentLiabilities = mergeLines(cur.currentLiabilities, pri.currentLiabilities)
-	view.TotalCurrentLiabilities = cur.totalCurrentLiab
-	view.PriorTotalCurrentLiabilities = pri.totalCurrentLiab
+	if taxLiab != 0 || priTaxLiab != 0 {
+		view.CurrentLiabilities = append(view.CurrentLiabilities, models.ReportLine{
+			Name:             "Utang Pajak Penghasilan (kini)",
+			AmountCents:      taxLiab,
+			PriorAmountCents: priTaxLiab,
+		})
+	}
+	view.TotalCurrentLiabilities = cur.totalCurrentLiab + taxLiab
+	view.PriorTotalCurrentLiabilities = pri.totalCurrentLiab + priTaxLiab
 
 	view.NonCurrentLiabilities = mergeLines(cur.nonLiabilities, pri.nonLiabilities)
 	view.TotalNonCurrentLiabilities = cur.totalNonLiab
 	view.PriorTotalNonCurrentLiabilities = pri.totalNonLiab
 
-	view.TotalLiabilities = cur.totalCurrentLiab + cur.totalNonLiab
-	view.PriorTotalLiabilities = pri.totalCurrentLiab + pri.totalNonLiab
+	view.TotalLiabilities = view.TotalCurrentLiabilities + cur.totalNonLiab
+	view.PriorTotalLiabilities = view.PriorTotalCurrentLiabilities + pri.totalNonLiab
 
 	view.Equity = mergeLines(cur.equity, pri.equity)
 	view.TotalEquity = cur.totalEquity
 	view.PriorTotalEquity = pri.totalEquity
 
-	// Saldo akun pendapatan/beban yang belum dipindahkan ke saldo laba.
-	view.UnclosedProfit = cur.unclosed
-	view.PriorUnclosedProfit = pri.unclosed
+	// Saldo akun pendapatan/beban yang belum dipindahkan ke saldo laba,
+	// dikurangi beban pajak kini yang belum dibukukan lewat jurnal.
+	view.UnclosedProfit = cur.unclosed + curTax.BookedTaxCents - curTax.CurrentTaxCents
+	view.PriorUnclosedProfit = pri.unclosed + priTax.BookedTaxCents - priTax.CurrentTaxCents
 
-	view.TotalLiabEquity = view.TotalLiabilities + cur.totalEquity + cur.unclosed
-	view.PriorTotalLiabEquity = view.PriorTotalLiabilities + pri.totalEquity + pri.unclosed
+	view.TotalLiabEquity = view.TotalLiabilities + cur.totalEquity + view.UnclosedProfit
+	view.PriorTotalLiabEquity = view.PriorTotalLiabilities + pri.totalEquity + view.PriorUnclosedProfit
 }
 
 // mergeLines menggabungkan baris periode berjalan dan periode pembanding

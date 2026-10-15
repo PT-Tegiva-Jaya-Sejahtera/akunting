@@ -68,16 +68,42 @@ func TestAssemblePLPisahBeban(t *testing.T) {
 		t.Fatalf("beban pajak salah: total=%d n=%d", b.totalTax, len(b.tax))
 	}
 
+	var tarif pgtype.Numeric
+	if err := tarif.Scan("0.22"); err != nil {
+		t.Fatal(err)
+	}
 	var view models.ReportView
-	applyProfitLoss(&view, b, plBlock{})
+	applyProfitLoss(&view, b, plBlock{}, tarif)
 	if view.OperatingProfit != 700_000_00 {
 		t.Fatalf("laba operasi = %d, mau 70000000", view.OperatingProfit)
 	}
 	if view.ProfitBeforeTax != 650_000_00 {
 		t.Fatalf("laba sebelum pajak = %d, mau 65000000", view.ProfitBeforeTax)
 	}
-	if view.NetIncome != 550_000_00 {
-		t.Fatalf("laba bersih = %d, mau 55000000", view.NetIncome)
+	// Beban pajak kini = laba sebelum pajak x tarif = 650.000.000 x 22%.
+	if view.TotalTaxExpense != 143_000_00 {
+		t.Fatalf("beban pajak = %d, mau 14300000 (650.000.000 x 22%%)", view.TotalTaxExpense)
+	}
+	// Sudah ada beban pajak 100.000.000 lewat jurnal, jadi muncul baris koreksi.
+	if len(view.TaxExpense) != 2 || view.TaxExpense[1].AmountCents != 43_000_00 {
+		t.Fatalf("baris beban pajak salah: %+v", view.TaxExpense)
+	}
+	if view.NetIncome != 507_000_00 {
+		t.Fatalf("laba bersih = %d, mau 50700000", view.NetIncome)
+	}
+
+	// Rugi: beban pajak 0, tidak negatif.
+	var rugiView models.ReportView
+	rugi := assemblePL([]db.ListAccountTotalsByPeriodRow{
+		totalRow("4-1000", "Pendapatan Sewa", db.AccountTypeRevenue, models.SubRevenue, models.PsakPendapatan, 0, 100_000_00),
+		totalRow("5-1000", "Beban Gaji", db.AccountTypeExpense, models.SubExpense, models.PsakBebanOperasional, 250_000_00, 0),
+	})
+	applyProfitLoss(&rugiView, rugi, plBlock{}, tarif)
+	if rugiView.TotalTaxExpense != 0 {
+		t.Fatalf("rugi harus beban pajak 0, dapat %d", rugiView.TotalTaxExpense)
+	}
+	if rugiView.NetIncome != -150_000_00 {
+		t.Fatalf("laba bersih rugi = %d, mau -15000000", rugiView.NetIncome)
 	}
 }
 

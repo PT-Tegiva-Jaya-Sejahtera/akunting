@@ -28,14 +28,14 @@ func (h *Handlers) ReportsEquityGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	view := models.EquityView{ReportView: win.view}
-	cur, ok := h.equityStatement(r.Context(), company.ID, win.from, win.to)
+	cur, ok := h.equityStatement(r.Context(), company, win.from, win.to)
 	if !ok {
 		http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
 		return
 	}
 	view.Cur = cur
 	if win.cmp.ok {
-		pri, ok := h.equityStatement(r.Context(), company.ID, win.cmp.from, win.cmp.to)
+		pri, ok := h.equityStatement(r.Context(), company, win.cmp.from, win.cmp.to)
 		if !ok {
 			http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
 			return
@@ -47,21 +47,25 @@ func (h *Handlers) ReportsEquityGet(w http.ResponseWriter, r *http.Request) {
 		"Laporan Perubahan Ekuitas "+company.Name), company, view).Render(r.Context(), w)
 }
 
-// equityStatement menyusun satu matriks perubahan ekuitas untuk rentang waktu.
-func (h *Handlers) equityStatement(ctx context.Context, companyID int64, from, to time.Time) (models.EquityStatement, bool) {
-	opening, err := h.accountTotals(ctx, companyID, totalsOpening, from, to)
+// equityStatement menyusun satu matriks perubahan ekuitas untuk rentang waktu,
+// sudah memasukkan beban pajak kini periode tersebut (PSAK 212) supaya laba
+// periode sama dengan laba bersih Laporan Laba Rugi.
+func (h *Handlers) equityStatement(ctx context.Context, company db.Company, from, to time.Time) (models.EquityStatement, bool) {
+	opening, err := h.accountTotals(ctx, company.ID, totalsOpening, from, to)
 	if err != nil {
 		return models.EquityStatement{}, false
 	}
-	movements, err := h.accountTotals(ctx, companyID, totalsMovements, from, to)
+	movements, err := h.accountTotals(ctx, company.ID, totalsMovements, from, to)
 	if err != nil {
 		return models.EquityStatement{}, false
 	}
-	closing, err := h.accountTotals(ctx, companyID, totalsClosing, from, to)
+	closing, err := h.accountTotals(ctx, company.ID, totalsClosing, from, to)
 	if err != nil {
 		return models.EquityStatement{}, false
 	}
-	return models.BuildEquity(opening, movements, closing), true
+	stmt := models.BuildEquity(opening, movements, closing)
+	stmt.ApplyCurrentTax(models.AccrueTax(movements, company.TaxRate))
+	return stmt, true
 }
 
 // ReportsCashFlowGet menampilkan Laporan Arus Kas metode tidak langsung
@@ -75,14 +79,14 @@ func (h *Handlers) ReportsCashFlowGet(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	cur, ok := h.cashFlowStatement(r.Context(), company.ID, win.from, win.to)
+	cur, ok := h.cashFlowStatement(r.Context(), company, win.from, win.to)
 	if !ok {
 		http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
 		return
 	}
 	view := models.CashFlowView{ReportView: win.view, Cur: cur}
 	if win.cmp.ok {
-		pri, ok := h.cashFlowStatement(r.Context(), company.ID, win.cmp.from, win.cmp.to)
+		pri, ok := h.cashFlowStatement(r.Context(), company, win.cmp.from, win.cmp.to)
 		if !ok {
 			http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
 			return
@@ -95,17 +99,22 @@ func (h *Handlers) ReportsCashFlowGet(w http.ResponseWriter, r *http.Request) {
 		"Laporan Arus Kas "+company.Name), company, view).Render(r.Context(), w)
 }
 
-// cashFlowStatement menyusun laporan arus kas satu rentang waktu.
-func (h *Handlers) cashFlowStatement(ctx context.Context, companyID int64, from, to time.Time) (models.CashFlow, bool) {
-	opening, err := h.accountTotals(ctx, companyID, totalsOpening, from, to)
+// cashFlowStatement menyusun laporan arus kas satu rentang waktu, sudah
+// memasukkan beban pajak kini periode tersebut (PSAK 212): laba awal sama
+// dengan laba bersih Laporan Laba Rugi dan akruan pajak ditambahkan kembali
+// sebagai pos non-kas.
+func (h *Handlers) cashFlowStatement(ctx context.Context, company db.Company, from, to time.Time) (models.CashFlow, bool) {
+	opening, err := h.accountTotals(ctx, company.ID, totalsOpening, from, to)
 	if err != nil {
 		return models.CashFlow{}, false
 	}
-	movements, err := h.accountTotals(ctx, companyID, totalsMovements, from, to)
+	movements, err := h.accountTotals(ctx, company.ID, totalsMovements, from, to)
 	if err != nil {
 		return models.CashFlow{}, false
 	}
-	return models.BuildCashFlow(opening, movements), true
+	cash := models.BuildCashFlow(opening, movements)
+	cash.ApplyCurrentTax(models.AccrueTax(movements, company.TaxRate))
+	return cash, true
 }
 
 // ReportsNotesGet menampilkan Catatan atas Laporan Keuangan (PSAK 201 par.
@@ -147,7 +156,7 @@ func (h *Handlers) ReportsNotesGet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	equity, ok := h.equityStatement(ctx, company.ID, win.from, win.to)
+	equity, ok := h.equityStatement(ctx, company, win.from, win.to)
 	if !ok {
 		http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
 		return

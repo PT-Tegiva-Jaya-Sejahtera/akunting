@@ -203,6 +203,9 @@ func newRouter(pool *pgxpool.Pool, queries *db.Queries, h *handlers.Handlers) ht
 			r.Get("/reports/pl/pdf", h.ReportsPLPdfGet)
 			r.Get("/reports/bs/pdf", h.ReportsBSPdfGet)
 
+			// Ringkasan pajak penghasilan kini (PSAK 212).
+			r.Get("/tax", h.TaxGet)
+
 			// Jurnal: semua role boleh melihat daftar dan detail.
 			r.Get("/journals", h.JournalsListGet)
 			r.Get("/journals/{journalID}", h.JournalDetailGet)

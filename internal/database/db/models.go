@@ -508,8 +508,9 @@ type Company struct {
 	RoundingUnit string
 	EntityNote   string
 	// Kunci acak pada URL /companies/<kunci>, menggantikan id agar tidak mudah ditebak.
-	UrlKey string
-	Pillar Pillar
+	UrlKey  string
+	Pillar  Pillar
+	TaxRate pgtype.Numeric
 }
 
 type CompanyUser struct {

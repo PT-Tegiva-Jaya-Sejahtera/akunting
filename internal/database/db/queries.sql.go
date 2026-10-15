@@ -137,7 +137,7 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 const createCompany = `-- name: CreateCompany :one
 INSERT INTO companies (name, slug, base_currency, url_key)
 VALUES ($1, $2, $3, $4)
-RETURNING id, name, slug, base_currency, created_at, updated_at, address, npwp, rounding_unit, entity_note, url_key, pillar
+RETURNING id, name, slug, base_currency, created_at, updated_at, address, npwp, rounding_unit, entity_note, url_key, pillar, tax_rate
 `
 
 type CreateCompanyParams struct {
@@ -168,6 +168,7 @@ func (q *Queries) CreateCompany(ctx context.Context, arg CreateCompanyParams) (C
 		&i.EntityNote,
 		&i.UrlKey,
 		&i.Pillar,
+		&i.TaxRate,
 	)
 	return i, err
 }
@@ -945,7 +946,7 @@ func (q *Queries) GetAccountBySystemRole(ctx context.Context, arg GetAccountBySy
 }
 
 const getCompanyByID = `-- name: GetCompanyByID :one
-SELECT id, name, slug, base_currency, created_at, updated_at, address, npwp, rounding_unit, entity_note, url_key, pillar FROM companies WHERE id = $1
+SELECT id, name, slug, base_currency, created_at, updated_at, address, npwp, rounding_unit, entity_note, url_key, pillar, tax_rate FROM companies WHERE id = $1
 `
 
 func (q *Queries) GetCompanyByID(ctx context.Context, id int64) (Company, error) {
@@ -964,12 +965,13 @@ func (q *Queries) GetCompanyByID(ctx context.Context, id int64) (Company, error)
 		&i.EntityNote,
 		&i.UrlKey,
 		&i.Pillar,
+		&i.TaxRate,
 	)
 	return i, err
 }
 
 const getCompanyByKey = `-- name: GetCompanyByKey :one
-SELECT id, name, slug, base_currency, created_at, updated_at, address, npwp, rounding_unit, entity_note, url_key, pillar FROM companies WHERE url_key = $1
+SELECT id, name, slug, base_currency, created_at, updated_at, address, npwp, rounding_unit, entity_note, url_key, pillar, tax_rate FROM companies WHERE url_key = $1
 `
 
 func (q *Queries) GetCompanyByKey(ctx context.Context, urlKey string) (Company, error) {
@@ -988,12 +990,13 @@ func (q *Queries) GetCompanyByKey(ctx context.Context, urlKey string) (Company, 
 		&i.EntityNote,
 		&i.UrlKey,
 		&i.Pillar,
+		&i.TaxRate,
 	)
 	return i, err
 }
 
 const getCompanyBySlug = `-- name: GetCompanyBySlug :one
-SELECT id, name, slug, base_currency, created_at, updated_at, address, npwp, rounding_unit, entity_note, url_key, pillar FROM companies WHERE slug = $1
+SELECT id, name, slug, base_currency, created_at, updated_at, address, npwp, rounding_unit, entity_note, url_key, pillar, tax_rate FROM companies WHERE slug = $1
 `
 
 func (q *Queries) GetCompanyBySlug(ctx context.Context, slug string) (Company, error) {
@@ -1012,6 +1015,7 @@ func (q *Queries) GetCompanyBySlug(ctx context.Context, slug string) (Company, e
 		&i.EntityNote,
 		&i.UrlKey,
 		&i.Pillar,
+		&i.TaxRate,
 	)
 	return i, err
 }
@@ -3133,8 +3137,12 @@ SET name = $1,
     npwp = $3,
     rounding_unit = $4,
     entity_note = $5,
+    -- tax_rate bersifat opsional: bila pemanggil tidak mengirim nilai (NULL),
+    -- tarif lama dipertahankan. Pemanggil lama (settings, demoseed) tidak
+    -- mengirim tax_rate dan tidak boleh mereset tarif ke NULL (kolom NOT NULL).
+    tax_rate = COALESCE($6, tax_rate),
     updated_at = now()
-WHERE id = $6
+WHERE id = $7
 `
 
 type UpdateCompanyProfileParams struct {
@@ -3143,6 +3151,7 @@ type UpdateCompanyProfileParams struct {
 	Npwp         string
 	RoundingUnit string
 	EntityNote   string
+	TaxRate      pgtype.Numeric
 	ID           int64
 }
 
@@ -3153,6 +3162,7 @@ func (q *Queries) UpdateCompanyProfile(ctx context.Context, arg UpdateCompanyPro
 		arg.Npwp,
 		arg.RoundingUnit,
 		arg.EntityNote,
+		arg.TaxRate,
 		arg.ID,
 	)
 	return err

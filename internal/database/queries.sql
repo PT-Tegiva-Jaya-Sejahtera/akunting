@@ -583,6 +583,10 @@ SET name = @name,
     npwp = @npwp,
     rounding_unit = @rounding_unit,
     entity_note = @entity_note,
+    -- tax_rate bersifat opsional: bila pemanggil tidak mengirim nilai (NULL),
+    -- tarif lama dipertahankan. Pemanggil lama (settings, demoseed) tidak
+    -- mengirim tax_rate dan tidak boleh mereset tarif ke NULL (kolom NOT NULL).
+    tax_rate = COALESCE(sqlc.narg('tax_rate'), tax_rate),
     updated_at = now()
 WHERE id = @id;
 
