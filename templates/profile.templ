@@ -1,0 +1,118 @@
+package templates
+
+// ProfilePage adalah halaman Pengaturan profil pengguna: data diri yang bisa
+// diubah, ditambah keterangan hak akses dan tanggal bergabung yang hanya
+// tampilan. Foto profil sengaja tidak diunggah: tampilan memakai inisial nama.
+templ ProfilePage(shell Shell, view ProfileView) {
+	@Layout(shell) {
+		@pageHeader("Pengaturan Profil", "Data ini dipakai pada jejak aktivitas dan pemberitahuan di seluruh pembukuan.") {
+		}
+		if view.Saved {
+			<div class="mt-6 flex items-start gap-2.5 rounded-input border border-ok/20 bg-ok/5 px-4 py-3 text-sm text-ok">
+				<svg class="mt-0.5 h-4 w-4 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/>
+				</svg>
+				<span>Profil tersimpan.</span>
+			</div>
+		}
+		if view.Error != "" {
+			@errBox(view.Error)
+		}
+		<div class="mt-6 grid gap-6 xl:grid-cols-3">
+			<div class={ cardClass }>
+				<div class={ cardTitleClass }>Profil</div>
+				<div class="flex flex-col items-center px-5 py-6 text-center">
+					<span class="flex h-20 w-20 items-center justify-center rounded-full bg-accent text-2xl font-semibold uppercase tracking-wide text-white shadow-btn">
+						{ initials(view.FullName) }
+					</span>
+					<div class="mt-3 text-base font-semibold text-ink">{ view.FullName }</div>
+					<div class="text-xs text-muted">{ view.Username }</div>
+					<p class="mt-4 text-xs leading-relaxed text-muted">
+						Foto profil memakai inisial nama. Unggahan foto belum tersedia pada versi ini.
+					</p>
+				</div>
+			</div>
+			<div class={ cardClass + " xl:col-span-2" }>
+				<div class={ cardTitleClass }>Data diri</div>
+				<form method="post" action="/profile" class="grid gap-5 px-5 py-5 sm:grid-cols-2">
+					<div class="sm:col-span-2">
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="full_name">Nama lengkap</label>
+						<input
+							id="full_name"
+							name="full_name"
+							type="text"
+							required
+							maxlength="80"
+							autocomplete="name"
+							value={ view.FullName }
+							class={ inputClass }
+						/>
+					</div>
+					<div>
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="email">Email</label>
+						<input
+							id="email"
+							name="email"
+							type="email"
+							maxlength="120"
+							autocomplete="email"
+							placeholder="nama@perusahaan.id"
+							value={ view.Email }
+							class={ inputClass }
+						/>
+					</div>
+					<div>
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="phone">Nomor HP</label>
+						<input
+							id="phone"
+							name="phone"
+							type="tel"
+							maxlength="20"
+							autocomplete="tel"
+							placeholder="0812xxxxxxx"
+							value={ view.Phone }
+							class={ inputClass + " num" }
+						/>
+					</div>
+					<div>
+						@dateField("birth_date", "birth_date", "Tanggal lahir", view.BirthDateISO)
+					</div>
+					<div>
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="username_ro">Username (tidak dapat diubah)</label>
+						<input
+							id="username_ro"
+							type="text"
+							disabled
+							value={ view.Username }
+							class={ inputClass + " num cursor-not-allowed bg-panel text-muted" }
+						/>
+					</div>
+					<div class="sm:col-span-2">
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="role_ro">Hak akses (diatur owner lewat Pengaturan perusahaan)</label>
+						<input
+							id="role_ro"
+							type="text"
+							disabled
+							value={ view.RoleAccess }
+							class={ inputClass + " cursor-not-allowed bg-panel text-muted" }
+						/>
+					</div>
+					<div>
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="joined_ro">Bergabung sejak</label>
+						<input
+							id="joined_ro"
+							type="text"
+							disabled
+							value={ view.MemberSince }
+							class={ inputClass + " cursor-not-allowed bg-panel text-muted" }
+						/>
+					</div>
+					<div class="sm:col-span-2 flex flex-wrap items-center gap-3">
+						<button type="submit" class={ btnPrimary }>Simpan profil</button>
+						<span class="text-xs text-muted">Perubahan berlaku untuk seluruh pembukuan yang Anda akses.</span>
+					</div>
+				</form>
+			</div>
+		</div>
+	}
+}

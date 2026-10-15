@@ -1,0 +1,319 @@
+package handlers
+
+import (
+	"errors"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"accounting/internal/database/db"
+	appmw "accounting/internal/middleware"
+	"accounting/internal/models"
+	"accounting/templates"
+)
+
+// JournalsListGet menampilkan daftar jurnal terbaru perusahaan.
+func (h *Handlers) JournalsListGet(w http.ResponseWriter, r *http.Request) {
+	user, role, company, ok := h.companyContext(w, r)
+	if !ok {
+		return
+	}
+
+	journals, err := h.DB.ListRecentJournals(r.Context(), db.ListRecentJournalsParams{
+		CompanyID:  company.ID,
+		LimitCount: 50,
+	})
+	if err != nil {
+		http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = templates.JournalsListPage(h.newShell(r, user, company, role, "journals", "Jurnal "+company.Name), company, journals).Render(r.Context(), w)
+}
+
+// JournalNewGet menampilkan form jurnal baru berisi dua baris kosong.
+func (h *Handlers) JournalNewGet(w http.ResponseWriter, r *http.Request) {
+	user, role, company, ok := h.companyContext(w, r)
+	if !ok {
+		return
+	}
+	accounts, ok := h.accountsFor(w, r, company)
+	if !ok {
+		return
+	}
+
+	form := models.JournalForm{
+		Date:        time.Now().Format("2006-01-02"),
+		IsAdjusting: r.URL.Query().Get("adjusting") == "1",
+		Lines:       []models.JournalLine{{}, {}},
+	}
+	h.renderJournalForm(w, r, user, company, role, accounts, form)
+}
+
+// JournalLineGet mengembalikan satu baris kosong untuk ditambah HTMX
+// (hx-get + hx-target=#journal-lines + hx-swap=beforeend).
+func (h *Handlers) JournalLineGet(w http.ResponseWriter, r *http.Request) {
+	_, _, company, ok := h.companyContext(w, r)
+	if !ok {
+		return
+	}
+	accounts, ok := h.accountsFor(w, r, company)
+	if !ok {
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = templates.JournalLineRow(accounts, company.ID, models.JournalLine{}).Render(r.Context(), w)
+}
+
+// JournalPreviewPost menghitung total debit/kredit dari isi form saat ini
+// untuk ditampilkan langsung (HTMX hx-trigger=input changed).
+func (h *Handlers) JournalPreviewPost(w http.ResponseWriter, r *http.Request) {
+	_, _, _, ok := h.companyContext(w, r)
+	if !ok {
+		return
+	}
+
+	form, _, _ := h.parseJournalForm(r)
+	var totalDebit, totalCredit int64
+	for _, line := range form.Lines {
+		d, err1 := models.ParseMoney(line.DebitStr)
+		c, err2 := models.ParseMoney(line.CreditStr)
+		if err1 == nil {
+			totalDebit += d
+		}
+		if err2 == nil {
+			totalCredit += c
+		}
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = templates.JournalTotalsFragment(totalDebit, totalCredit).Render(r.Context(), w)
+}
+
+// JournalCreatePost memvalidasi jurnal lalu menyimpannya secara atomik
+// (header + semua baris) lewat CreateJournalWithEntries.
+func (h *Handlers) JournalCreatePost(w http.ResponseWriter, r *http.Request) {
+	user, role, company, ok := h.companyContext(w, r)
+	if !ok {
+		return
+	}
+	accounts, ok := h.accountsFor(w, r, company)
+	if !ok {
+		return
+	}
+
+	form, lines, errMsg := h.parseJournalForm(r)
+	if errMsg == "" {
+		errMsg = validateJournalForm(form, lines, accounts)
+	}
+	if errMsg != "" {
+		form.Error = errMsg
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = templates.JournalFormPage(h.newShell(r, user, company, role, "journals", "Jurnal "+company.Name), company, accounts, form).Render(r.Context(), w)
+		return
+	}
+
+	journalDate, _ := models.ParseDateID(form.Date)
+	params := db.CreateJournalWithEntriesParams{
+		CompanyID:    company.ID,
+		JournalDate:  pgtype.Date{Time: journalDate, Valid: true, InfinityModifier: pgtype.Finite},
+		Reference:    strings.TrimSpace(form.Reference),
+		Memo:         strings.TrimSpace(form.Memo),
+		CreatedBy:    user.UserID,
+		IsAdjusting:  form.IsAdjusting,
+		AccountIds:   make([]int64, len(lines)),
+		Descriptions: make([]string, len(lines)),
+		Debits:       make([]pgtype.Numeric, len(lines)),
+		Credits:      make([]pgtype.Numeric, len(lines)),
+	}
+	for i, line := range lines {
+		params.AccountIds[i] = line.AccountID
+		params.Descriptions[i] = line.Description
+		params.Debits[i], _ = models.CentsToNumeric(line.DebitCents)
+		params.Credits[i], _ = models.CentsToNumeric(line.CreditCents)
+	}
+
+	journal, err := h.DB.CreateJournalWithEntries(r.Context(), params)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			form.Error = "Referensi jurnal sudah dipakai, gunakan yang lain."
+		} else {
+			form.Error = "Jurnal ditolak database: total debit harus sama dengan total kredit."
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = templates.JournalFormPage(h.newShell(r, user, company, role, "journals", "Jurnal "+company.Name), company, accounts, form).Render(r.Context(), w)
+		return
+	}
+
+	http.Redirect(w, r, "/companies/"+company.UrlKey+
+		"/journals/"+strconv.FormatInt(journal.ID, 10), http.StatusSeeOther)
+}
+
+// JournalDetailGet menampilkan header jurnal dan seluruh baris ledger.
+func (h *Handlers) JournalDetailGet(w http.ResponseWriter, r *http.Request) {
+	user, role, company, ok := h.companyContext(w, r)
+	if !ok {
+		return
+	}
+
+	journalID, err := strconv.ParseInt(chi.URLParam(r, "journalID"), 10, 64)
+	if err != nil {
+		http.Error(w, "400 id jurnal tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	journal, err := h.DB.GetJournalByID(r.Context(), db.GetJournalByIDParams{
+		ID:        journalID,
+		CompanyID: company.ID,
+	})
+	if err != nil {
+		http.Error(w, "404 jurnal tidak ditemukan", http.StatusNotFound)
+		return
+	}
+
+	entries, err := h.DB.GetJournalWithEntries(r.Context(), db.GetJournalWithEntriesParams{
+		JournalID: journal.ID,
+		CompanyID: company.ID,
+	})
+	if err != nil {
+		http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
+		return
+	}
+
+	var totalDebit, totalCredit int64
+	for _, e := range entries {
+		totalDebit += models.NumericToCents(e.Debit)
+		totalCredit += models.NumericToCents(e.Credit)
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = templates.JournalDetailPage(h.newShell(r, user, company, role, "journals", "Jurnal "+journal.Reference), company, journal, entries,
+		totalDebit, totalCredit).Render(r.Context(), w)
+}
+
+// journalLineInput adalah baris hasil parsing yang sudah lolos format uang.
+type journalLineInput struct {
+	AccountID   int64
+	Description string
+	DebitCents  int64
+	CreditCents int64
+}
+
+// parseJournalForm membaca form jurnal mentah (tanpa validasi bisnis).
+func (h *Handlers) parseJournalForm(r *http.Request) (models.JournalForm, []journalLineInput, string) {
+	_ = r.ParseForm()
+
+	form := models.JournalForm{
+		Date:        r.FormValue("journal_date"),
+		Reference:   r.FormValue("reference"),
+		Memo:        r.FormValue("memo"),
+		IsAdjusting: r.FormValue("is_adjusting") == "on",
+	}
+
+	ids := r.Form["account_id"]
+	descs := r.Form["description"]
+	debits := r.Form["debit"]
+	credits := r.Form["credit"]
+
+	var lines []journalLineInput
+	for i := range ids {
+		line := models.JournalLine{}
+		if i < len(descs) {
+			line.Description = descs[i]
+		}
+		if i < len(debits) {
+			line.DebitStr = debits[i]
+		}
+		if i < len(credits) {
+			line.CreditStr = credits[i]
+		}
+		line.AccountID, _ = strconv.ParseInt(strings.TrimSpace(ids[i]), 10, 64)
+		form.Lines = append(form.Lines, line)
+
+		// Baris kosong sepenuhnya dilewati, bukan divalidasi.
+		if line.AccountID == 0 && strings.TrimSpace(line.Description) == "" &&
+			strings.TrimSpace(line.DebitStr) == "" && strings.TrimSpace(line.CreditStr) == "" {
+			continue
+		}
+
+		d, err := models.ParseMoney(line.DebitStr)
+		if err != nil {
+			return form, nil, "Baris " + strconv.Itoa(i+1) + ": format debit tidak valid."
+		}
+		c, err := models.ParseMoney(line.CreditStr)
+		if err != nil {
+			return form, nil, "Baris " + strconv.Itoa(i+1) + ": format kredit tidak valid."
+		}
+		lines = append(lines, journalLineInput{
+			AccountID:   line.AccountID,
+			Description: strings.TrimSpace(line.Description),
+			DebitCents:  d,
+			CreditCents: c,
+		})
+	}
+	return form, lines, ""
+}
+
+// validateJournalForm menerapkan aturan double-entry sebelum menyimpan.
+func validateJournalForm(form models.JournalForm, lines []journalLineInput, accounts []db.Account) string {
+	if _, err := models.ParseDateID(form.Date); err != nil {
+		return "Tanggal jurnal harus berformat dd/mm/yyyy."
+	}
+	if strings.TrimSpace(form.Reference) == "" {
+		return "Referensi jurnal wajib diisi."
+	}
+	if len(lines) < 2 {
+		return "Minimal 2 baris transaksi (satu debit dan satu kredit)."
+	}
+
+	validAccounts := make(map[int64]bool, len(accounts))
+	for _, a := range accounts {
+		validAccounts[a.ID] = true
+	}
+
+	var totalDebit, totalCredit int64
+	for i, line := range lines {
+		if line.AccountID == 0 || !validAccounts[line.AccountID] {
+			return "Baris " + strconv.Itoa(i+1) + ": pilih akun yang valid."
+		}
+		if (line.DebitCents > 0) == (line.CreditCents > 0) {
+			return "Baris " + strconv.Itoa(i+1) + ": isi debit ATAU kredit, tidak boleh keduanya."
+		}
+		totalDebit += line.DebitCents
+		totalCredit += line.CreditCents
+	}
+
+	if totalDebit == 0 {
+		return "Total transaksi tidak boleh nol."
+	}
+	if totalDebit != totalCredit {
+		return "Jurnal tidak berimbang: debit " + models.FormatCents(totalDebit) +
+			" vs kredit " + models.FormatCents(totalCredit) + "."
+	}
+	return ""
+}
+
+func (h *Handlers) renderJournalForm(w http.ResponseWriter, r *http.Request,
+	user appmw.SessionUser, company db.Company, role string, accounts []db.Account, form models.JournalForm) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = templates.JournalFormPage(h.newShell(r, user, company, role, "journals", "Jurnal "+company.Name), company, accounts, form).Render(r.Context(), w)
+}
+
+func (h *Handlers) accountsFor(w http.ResponseWriter, r *http.Request, company db.Company) ([]db.Account, bool) {
+	accounts, err := h.DB.ListAccounts(r.Context(), company.ID)
+	if err != nil {
+		http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
+		return nil, false
+	}
+	return accounts, true
+}

@@ -1,0 +1,331 @@
+package templates
+
+import (
+	"strconv"
+
+	"accounting/internal/database/db"
+	"accounting/internal/models"
+)
+
+// JournalsListPage menampilkan daftar jurnal perusahaan.
+templ JournalsListPage(shell Shell, company db.Company, journals []db.Journal) {
+	@Layout(shell) {
+		<div class="flex flex-wrap items-end justify-between gap-4">
+			<div class="min-w-0">
+				<h1 class="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">Jurnal Umum</h1>
+				<div class="mt-1.5 text-sm text-muted">{ company.Name }</div>
+			</div>
+			if shell.Role != "read_only" {
+				<div class="flex shrink-0 items-center gap-2">
+					<a href={ companyPath(company.UrlKey, "/journals/new") } class={ btnPrimary }>
+						<svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
+						</svg>
+						Jurnal Baru
+					</a>
+				</div>
+			}
+		</div>
+		<div class={ cardClass + " mt-8" }>
+			if len(journals) == 0 {
+				@emptyState("M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25", "Belum ada jurnal", "Transaksi pertama belum dicatat. Setiap jurnal memerlukan minimal dua baris dengan total debit sama dengan kredit.") {
+					if shell.Role != "read_only" {
+						<div class="mt-5">
+							<a href={ companyPath(company.UrlKey, "/journals/new") } class={ btnPrimary }>Catat Jurnal Pertama</a>
+						</div>
+					}
+				}
+			} else {
+				<div class="overflow-x-auto">
+					<table class="w-full min-w-[560px] text-sm">
+						<thead>
+							<tr class="border-b border-line bg-panel/60">
+								<th class={ thClass }>Tanggal</th>
+								<th class={ thClass }>Referensi</th>
+								<th class={ thClass }>Memo</th>
+								<th class={ thClass }>Status</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-line">
+							for _, j := range journals {
+								<tr class="transition-colors hover:bg-panel/60">
+									<td class="num px-5 py-3 text-xs text-muted">{ j.JournalDate.Time.Format("02-01-2006") }</td>
+									<td class="px-5 py-3">
+										<a
+											href={ companyPath(company.UrlKey, "/journals/"+strconv.FormatInt(j.ID, 10)) }
+											class="num text-sm font-medium text-accent transition-colors hover:text-accent-hover hover:underline"
+										>
+											{ j.Reference }
+										</a>
+									</td>
+									<td class="px-5 py-3 text-label">
+										{ j.Memo }
+										if j.IsAdjusting {
+											<span class="ml-2 inline-flex rounded-input bg-accent-wash px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
+												Penyesuaian
+											</span>
+										}
+									</td>
+									<td class="px-5 py-3">
+										<span class="inline-flex rounded-input bg-accent-wash px-2.5 py-1 text-xs font-medium text-accent">
+											{ journalStatusLabel(string(j.Status)) }
+										</span>
+									</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+		</div>
+	}
+}
+
+// JournalFormPage adalah form input jurnal double-entry dengan baris
+// dinamis (HTMX) dan indikator saldo langsung.
+templ JournalFormPage(shell Shell, company db.Company, accounts []db.Account, form models.JournalForm) {
+	@Layout(shell) {
+		<div class="flex flex-wrap items-end justify-between gap-4">
+			<div class="min-w-0">
+				<h1 class="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">Buat Jurnal Baru</h1>
+				<div class="mt-1.5 text-sm text-muted">
+					Isi minimal dua baris: total debit harus sama dengan total kredit.
+				</div>
+			</div>
+		</div>
+		if form.Error != "" {
+			@errBox(form.Error)
+		}
+		<form
+			id="journal-form"
+			method="post"
+			action={ companyPath(company.UrlKey, "/journals") }
+			class="mt-8 space-y-6"
+		>
+			<div class={ cardClass + " grid gap-5 p-6 sm:grid-cols-2 lg:grid-cols-4" }>
+				<div>
+					@dateField("journal_date", "journal_date", "Tanggal", form.Date)
+				</div>
+				<div>
+					<label class="mb-1.5 block text-sm font-medium text-ink" for="reference">Referensi</label>
+					<input
+						id="reference"
+						name="reference"
+						required
+						placeholder="mis. JV-0001"
+						value={ form.Reference }
+						class={ inputClass + " num" }
+					/>
+				</div>
+				<div>
+					<label class="mb-1.5 block text-sm font-medium text-ink" for="memo">Memo</label>
+					<input
+						id="memo"
+						name="memo"
+						placeholder="keterangan transaksi"
+						value={ form.Memo }
+						class={ inputClass }
+					/>
+				</div>
+				<div class="flex items-end pb-1">
+					<label class="flex items-center gap-2 text-sm text-label">
+						<input
+							type="checkbox"
+							name="is_adjusting"
+							checked?={ form.IsAdjusting }
+							class="h-4 w-4 rounded border-line text-accent focus:ring-accent/20"
+						/>
+						Jurnal penyesuaian
+					</label>
+				</div>
+			</div>
+			<div class={ cardClass }>
+				<div class={ cardTitleClass }>Baris Transaksi</div>
+				<div class="overflow-x-auto">
+					<table class="w-full min-w-[720px] text-sm">
+						<thead>
+							<tr class="border-b border-line bg-panel/60">
+								<th class={ thClass }>Akun</th>
+								<th class={ thClass }>Keterangan</th>
+								<th class={ thClass + " text-right" }>Debit</th>
+								<th class={ thClass + " text-right" }>Kredit</th>
+								<th class={ thClass + " text-center" }>Aksi</th>
+							</tr>
+						</thead>
+						<tbody id="journal-lines" class="divide-y divide-line">
+							for _, line := range form.Lines {
+								@JournalLineRow(accounts, company.ID, line)
+							}
+						</tbody>
+					</table>
+				</div>
+				<div class="flex flex-wrap items-center justify-between gap-4 border-t border-line px-5 py-4">
+					<button
+						type="button"
+						hx-get={ "/companies/" + strconv.FormatInt(company.ID, 10) + "/journals/line" }
+						hx-target="#journal-lines"
+						hx-swap="beforeend"
+						class={ btnSecondary }
+					>
+						<svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
+						</svg>
+						Tambah Baris
+					</button>
+					@JournalTotalsFragment(0, 0)
+				</div>
+			</div>
+			<div class="flex items-center justify-end gap-3">
+				<a href={ companyPath(company.UrlKey, "/journals") } class={ btnSecondary }>Batal</a>
+				<button type="submit" class={ btnPrimary }>
+					Simpan Jurnal
+				</button>
+			</div>
+		</form>
+	}
+}
+
+// JournalLineRow adalah satu baris debit/kredit; dipakai form awal,
+// tambah baris (HTMX), maupun render ulang saat validasi gagal.
+templ JournalLineRow(accounts []db.Account, companyID int64, line models.JournalLine) {
+	<tr>
+		<td class="px-3 py-2.5">
+			<select
+				name="account_id"
+				class={ inputClass + " min-w-[13rem] py-1.5" }
+			>
+				<option value="0">-- pilih akun --</option>
+				for _, a := range accounts {
+					<option value={ strconv.FormatInt(a.ID, 10) } selected?={ a.ID == line.AccountID }>
+						{ a.Code } - { a.Name }
+					</option>
+				}
+			</select>
+		</td>
+		<td class="px-3 py-2.5">
+			<input
+				name="description"
+				placeholder="keterangan"
+				value={ line.Description }
+				class={ inputClass + " py-1.5" }
+			/>
+		</td>
+		<td class="px-3 py-2.5">
+			<input
+				name="debit"
+				placeholder="0,00"
+				value={ line.DebitStr }
+				hx-post={ "/companies/" + strconv.FormatInt(companyID, 10) + "/journals/preview" }
+				hx-trigger="input changed delay:300ms"
+				hx-include="#journal-form"
+				hx-target="#totals"
+				hx-swap="innerHTML"
+				class={ inputClass + " num w-36 py-1.5 text-right" }
+			/>
+		</td>
+		<td class="px-3 py-2.5">
+			<input
+				name="credit"
+				placeholder="0,00"
+				value={ line.CreditStr }
+				hx-post={ "/companies/" + strconv.FormatInt(companyID, 10) + "/journals/preview" }
+				hx-trigger="input changed delay:300ms"
+				hx-include="#journal-form"
+				hx-target="#totals"
+				hx-swap="innerHTML"
+				class={ inputClass + " num w-36 py-1.5 text-right" }
+			/>
+		</td>
+		<td class="px-3 py-2.5 text-center">
+			<button
+				type="button"
+				hx-on:click="this.closest('tr').remove()"
+				title="Hapus baris ini"
+				class="inline-flex h-8 w-8 items-center justify-center rounded-input text-muted transition-colors hover:bg-danger/10 hover:text-danger focus:outline-none focus-visible:ring-2 focus-visible:ring-danger/20"
+			>
+				<svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/>
+				</svg>
+			</button>
+		</td>
+	</tr>
+}
+
+// JournalTotalsFragment menampilkan ringkasan saldo untuk target #totals.
+templ JournalTotalsFragment(totalDebit int64, totalCredit int64) {
+	<div id="totals" class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+		<span class="text-muted">Debit <strong class="num ml-1 font-medium text-ink">{ models.FormatCents(totalDebit) }</strong></span>
+		<span class="text-muted">Kredit <strong class="num ml-1 font-medium text-ink">{ models.FormatCents(totalCredit) }</strong></span>
+		if totalDebit == totalCredit && totalDebit > 0 {
+			<span class="inline-flex items-center gap-1.5 rounded-input bg-ok/10 px-2.5 py-1 text-xs font-medium text-ok">
+				<svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/>
+				</svg>
+				Berimbang
+			</span>
+		} else {
+			<span class="text-muted">
+				Selisih <span class="num font-medium">{ models.FormatCents(totalDebit - totalCredit) }</span>
+			</span>
+		}
+	</div>
+}
+
+// JournalDetailPage menampilkan satu jurnal beserta baris ledger-nya.
+templ JournalDetailPage(shell Shell, company db.Company, journal db.Journal, entries []db.GetJournalWithEntriesRow, totalDebit int64, totalCredit int64) {
+	@Layout(shell) {
+		<div class="flex flex-wrap items-end justify-between gap-4">
+			<div class="min-w-0">
+				<h1 class="num text-2xl font-semibold tracking-tight text-ink sm:text-3xl">{ journal.Reference }</h1>
+				<div class="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-muted">
+					<span class="num text-xs">{ journal.JournalDate.Time.Format("02-01-2006") }</span>
+					<span>·</span>
+					<span>{ journal.Memo }</span>
+					<span>·</span>
+					<span class="inline-flex rounded-input bg-accent-wash px-2.5 py-0.5 text-xs font-medium text-accent">
+						{ journalStatusLabel(string(journal.Status)) }
+					</span>
+				</div>
+			</div>
+			<div class="flex shrink-0 items-center gap-2">
+				<a href={ companyPath(company.UrlKey, "/journals") } class={ btnSecondary }>
+					Kembali ke Daftar
+				</a>
+			</div>
+		</div>
+		<div class={ cardClass + " mt-8" }>
+			<div class="overflow-x-auto">
+				<table class="w-full min-w-[560px] text-sm">
+					<thead>
+						<tr class="border-b border-line bg-panel/60">
+							<th class={ thClass }>Akun</th>
+							<th class={ thClass }>Keterangan</th>
+							<th class={ thClass + " text-right" }>Debit</th>
+							<th class={ thClass + " text-right" }>Kredit</th>
+						</tr>
+					</thead>
+					<tbody class="divide-y divide-line">
+						for _, e := range entries {
+							<tr class="transition-colors hover:bg-panel/60">
+								<td class="px-5 py-3">
+									<div class="num text-xs text-muted">{ e.AccountCode }</div>
+									<div class="font-medium text-ink">{ e.AccountName }</div>
+								</td>
+								<td class="px-5 py-3 text-label">{ e.Description }</td>
+								<td class="num px-5 py-3 text-right text-ink">{ models.FormatCents(models.NumericToCents(e.Debit)) }</td>
+								<td class="num px-5 py-3 text-right text-ink">{ models.FormatCents(models.NumericToCents(e.Credit)) }</td>
+							</tr>
+						}
+					</tbody>
+					<tfoot>
+						<tr class="border-t-2 border-line bg-panel/80">
+							<td class="px-5 py-3.5 font-semibold text-ink" colspan="2">Total</td>
+							<td class="num px-5 py-3.5 text-right font-semibold text-ink">{ models.FormatCents(totalDebit) }</td>
+							<td class="num px-5 py-3.5 text-right font-semibold text-ink">{ models.FormatCents(totalCredit) }</td>
+						</tr>
+					</tfoot>
+				</table>
+			</div>
+		</div>
+	}
+}

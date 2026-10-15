@@ -1,0 +1,18 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/database/queries.sql"
+    gen:
+      go:
+        package: "db"
+        out: "internal/database/db"
+        sql_package: "pgx/v5"
+        emit_interface: true
+        emit_empty_slices: true
+        emit_pointers_for_null_types: false
+        overrides:
+          # NUMERIC default-nya string. Kita pakai pgtype.Numeric dari pgx
+          # sendiri: presisi uang terjaga, tanpa menambah dependensi baru.
+          - db_type: "pg_catalog.numeric"
+            go_type: "github.com/jackc/pgx/v5/pgtype.Numeric"

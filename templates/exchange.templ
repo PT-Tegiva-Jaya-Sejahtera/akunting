@@ -1,0 +1,307 @@
+package templates
+
+import (
+	"strconv"
+
+	"accounting/internal/database/db"
+)
+
+// ExchangePage adalah halaman Export / Import: mengunduh data perusahaan dalam
+// beberapa format berkas, atau mengunggah jurnal dan daftar akun dari aplikasi
+// lain seperti ERP dan aplikasi akunting lain.
+templ ExchangePage(shell Shell, company db.Company, view ExchangeView) {
+	@Layout(shell) {
+		@pageHeader("Export / Import", "Tukar data dengan aplikasi ERP atau akunting lain. Berkas ditulis dengan angka polos bertitik desimal dan tanggal dd/mm/yyyy supaya mudah dibaca mesin.") {
+		}
+		<div class="mt-6 grid gap-6 xl:grid-cols-2">
+			<div class={ cardClass }>
+				<div class={ cardTitleClass }>Export data</div>
+				<form
+					method="get"
+					action={ companyPath(company.UrlKey, "/exchange/export") }
+					class="grid gap-4 px-5 py-5"
+				>
+					<div>
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="dataset">Data yang diunduh</label>
+						<select id="dataset" name="dataset" class={ inputClass }>
+							for _, d := range view.Datasets {
+								<option value={ d.Value }>{ d.Label }</option>
+							}
+						</select>
+					</div>
+					<div>
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="format">Format berkas</label>
+						<select id="format" name="format" class={ inputClass }>
+							for _, f := range view.Formats {
+								<option value={ f.Value }>{ f.Label }</option>
+							}
+						</select>
+					</div>
+					<div class="grid gap-4 sm:grid-cols-2">
+						@dateField("from", "from", "Dari tanggal (opsional)", "")
+						@dateField("to", "to", "Sampai tanggal (opsional)", "")
+					</div>
+					<div class="flex flex-wrap items-center gap-2">
+						<button type="submit" class={ btnPrimary }>
+							<svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
+							</svg>
+							Unduh
+						</button>
+						<span class="text-xs text-muted">Kosongkan tanggal untuk mengunduh seluruh catatan.</span>
+					</div>
+				</form>
+			</div>
+			<div class={ cardClass }>
+				<div class={ cardTitleClass }>Import data</div>
+				<form
+					method="post"
+					action={ companyPath(company.UrlKey, "/exchange/import") }
+					enctype="multipart/form-data"
+					class="grid gap-4 px-5 py-5"
+				>
+					<div>
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="import_dataset">Jenis data</label>
+						<select id="import_dataset" name="dataset" class={ inputClass }>
+							for _, d := range view.Importable {
+								<option value={ d.Value }>{ d.Label }</option>
+							}
+						</select>
+					</div>
+					<div>
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="berkas">Berkas (.xlsx, .xls, .csv, .txt, .xml)</label>
+						<input
+							id="berkas"
+							name="berkas"
+							type="file"
+							accept=".xlsx,.xls,.csv,.txt,.xml"
+							class={ inputClass + " file:mr-3 file:rounded-input file:border-0 file:bg-accent-wash file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-accent" }
+						/>
+					</div>
+					<div class="flex flex-wrap items-center gap-2">
+						<button type="submit" class={ btnPrimary }>Periksa berkas</button>
+						<span class="text-xs text-muted">Berkas tidak langsung disimpan. Anda melihat ringkasan dan daftar masalah lebih dahulu.</span>
+					</div>
+					<div class="rounded-input border border-line bg-panel/60 px-4 py-3">
+						<div class="text-[11px] font-semibold uppercase tracking-wider text-muted">Contoh berkas</div>
+						<div class="mt-2 grid gap-2">
+							for _, d := range view.Importable {
+								<div class="flex flex-wrap items-center gap-2 text-xs">
+									<span class="font-medium text-ink">{ d.Label }</span>
+									for _, f := range view.Formats {
+										<a
+											href={ companyPath(company.UrlKey, "/exchange/template?dataset="+d.Value+"&format="+f.Value) }
+											class="rounded-input border border-line bg-white px-2 py-0.5 font-medium text-label transition-colors hover:border-accent-soft hover:text-accent"
+										>
+											{ f.Ext }
+										</a>
+									}
+								</div>
+							}
+						</div>
+					</div>
+				</form>
+			</div>
+		</div>
+		<div class={ cardClass + " mt-6" }>
+			<div class={ cardTitleClass }>Susunan kolom dan catatan format</div>
+			<div class="grid gap-6 px-5 py-5 lg:grid-cols-2">
+				<div>
+					<div class="text-[11px] font-semibold uppercase tracking-wider text-muted">Kolom import jurnal</div>
+					<table class="mt-2 w-full text-sm">
+						<tbody class="divide-y divide-line/50">
+							<tr>
+								<td class="py-1.5 pr-3 font-medium text-ink">Tanggal</td>
+								<td class="py-1.5 text-label">dd/mm/yyyy, mis. 31/12/2026</td>
+							</tr>
+							<tr>
+								<td class="py-1.5 pr-3 font-medium text-ink">Referensi</td>
+								<td class="py-1.5 text-label">wajib, mis. JV-0001. Baris dengan tanggal, referensi, dan memo sama dianggap satu jurnal</td>
+							</tr>
+							<tr>
+								<td class="py-1.5 pr-3 font-medium text-ink">Memo</td>
+								<td class="py-1.5 text-label">keterangan jurnal (opsional)</td>
+							</tr>
+							<tr>
+								<td class="py-1.5 pr-3 font-medium text-ink">Kode Akun</td>
+								<td class="py-1.5 text-label">harus sudah ada di daftar akun perusahaan</td>
+							</tr>
+							<tr>
+								<td class="py-1.5 pr-3 font-medium text-ink">Keterangan</td>
+								<td class="py-1.5 text-label">keterangan tiap baris (opsional)</td>
+							</tr>
+							<tr>
+								<td class="py-1.5 pr-3 font-medium text-ink">Debit, Kredit</td>
+								<td class="py-1.5 text-label">angka polos (1250000.00) atau format Indonesia (1.250.000,00); total debit harus sama dengan total kredit</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+				<div>
+					<div class="text-[11px] font-semibold uppercase tracking-wider text-muted">Kolom import daftar akun</div>
+					<table class="mt-2 w-full text-sm">
+						<tbody class="divide-y divide-line/50">
+							<tr>
+								<td class="py-1.5 pr-3 font-medium text-ink">Kode, Nama</td>
+								<td class="py-1.5 text-label">wajib. Kode yang sudah ada dilewati</td>
+							</tr>
+							<tr>
+								<td class="py-1.5 pr-3 font-medium text-ink">Jenis</td>
+								<td class="py-1.5 text-label">aset, liability, equity, revenue, atau expense</td>
+							</tr>
+							<tr>
+								<td class="py-1.5 pr-3 font-medium text-ink">Sub Jenis</td>
+								<td class="py-1.5 text-label">mis. aset_lancar, aset_tidak_lancar, liabilitas_lancar, liabilitas_jangka_panjang, ekuitas, pendapatan, beban</td>
+							</tr>
+							<tr>
+								<td class="py-1.5 pr-3 font-medium text-ink">Saldo Normal</td>
+								<td class="py-1.5 text-label">debit atau credit</td>
+							</tr>
+							<tr>
+								<td class="py-1.5 pr-3 font-medium text-ink">Pos PSAK 201</td>
+								<td class="py-1.5 text-label">opsional, diisi otomatis bila kosong</td>
+							</tr>
+						</tbody>
+					</table>
+					<div class="mt-4 rounded-input border border-line bg-panel/60 px-4 py-3 text-xs leading-relaxed text-muted">
+						<span class="font-medium text-label">Catatan format.</span>
+						Berkas .xlsx ditulis penuh sebagai OOXML. Berkas .xls memakai SpreadsheetML 2003 yang dibuka Excel dan LibreOffice.
+						Berkas .txt memakai pemisah tab, .csv pemisah koma atau titik koma. Jurnal yang tanggalnya berada pada periode tertutup
+						akan ditolak oleh aturan periode.
+					</div>
+				</div>
+			</div>
+		</div>
+	}
+}
+
+// ExchangePreviewPage menampilkan ringkasan berkas import sebelum diterapkan.
+templ ExchangePreviewPage(shell Shell, company db.Company, view ExchangePreviewView) {
+	@Layout(shell) {
+		@pageHeader("Periksa Import", view.FileName) {
+			<a href={ companyPath(company.UrlKey, "/exchange") } class={ btnSecondary }>Kembali</a>
+		}
+		<div class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+			@kpiCardSimple("Jenis data", view.Label, "")
+			@kpiCardSimple("Baris terbaca", strconv.Itoa(view.TotalRows), view.Format)
+			if view.Groups > 0 {
+				@kpiCardSimple("Jurnal terdeteksi", strconv.Itoa(view.Groups), "")
+			} else {
+				@kpiCardSimple("Entri siap disimpan", strconv.Itoa(view.Valid), "")
+			}
+			if view.Groups > 0 {
+				@kpiCardSimple("Siap disimpan", strconv.Itoa(view.Valid), "")
+			} else {
+				@kpiCardSimple("Masalah", strconv.Itoa(len(view.Errors)), "")
+			}
+		</div>
+		if len(view.Errors) > 0 {
+			<div class="mt-6 rounded-card border border-danger/30 bg-danger/5 px-5 py-4">
+				<div class="text-sm font-semibold text-danger">Perlu diperbaiki ({ strconv.Itoa(len(view.Errors)) } masalah)</div>
+				<ul class="mt-2 space-y-1 text-sm text-danger">
+					for i, e := range view.Errors {
+						if i < 50 {
+							<li>{ e }</li>
+						}
+					}
+				</ul>
+				if len(view.Errors) > 50 {
+					<p class="mt-2 text-xs text-danger">Masih ada { strconv.Itoa(len(view.Errors)-50) } masalah lain. Perbaiki berkas lalu unggah ulang.</p>
+				}
+			</div>
+		}
+		if len(view.Warnings) > 0 {
+			<div class="mt-4 rounded-card border border-line bg-panel/60 px-5 py-4">
+				<div class="text-sm font-semibold text-ink">Catatan ({ strconv.Itoa(len(view.Warnings)) })</div>
+				<ul class="mt-2 space-y-1 text-sm text-muted">
+					for i, w := range view.Warnings {
+						if i < 20 {
+							<li>{ w }</li>
+						}
+					}
+				</ul>
+			</div>
+		}
+		<div class={ cardClass + " mt-6" }>
+			<div class={ cardTitleClass }>Terapkan</div>
+			<div class="flex flex-wrap items-center justify-between gap-3 px-5 py-5">
+				<p class="max-w-xl text-sm text-muted">
+					if view.Valid > 0 {
+						{ strconv.Itoa(view.Valid) } data siap disimpan ke pembukuan
+						{ company.Name }
+						. Data disimpan sebagai jurnal baru; tidak ada data lama yang dihapus atau diubah.
+					} else {
+						Belum ada data yang bisa disimpan. Perbaiki berkas sesuai daftar masalah di atas.
+					}
+				</p>
+				if view.Valid > 0 && len(view.Errors) == 0 {
+					<form method="post" action={ companyPath(company.UrlKey, "/exchange/import/confirm") }>
+						<input type="hidden" name="token" value={ view.Token }/>
+						<input type="hidden" name="dataset" value={ view.Dataset }/>
+						<button type="submit" class={ btnPrimary }>Terapkan { strconv.Itoa(view.Valid) } data</button>
+					</form>
+				}
+			</div>
+		</div>
+	}
+}
+
+// kpiCardSimple adalah kartu angka ringkas tanpa catatan bawah.
+templ kpiCardSimple(label string, value string, note string) {
+	<div class={ cardClass + " px-5 py-4" }>
+		<div class="text-xs font-medium uppercase tracking-wider text-muted">{ label }</div>
+		<div class="num mt-2 text-2xl font-semibold tracking-tight text-ink">{ value }</div>
+		if note != "" {
+			<div class="mt-1 text-xs text-muted">{ note }</div>
+		}
+	</div>
+}
+
+// ExchangeResultPage menampilkan hasil penerapan import.
+templ ExchangeResultPage(shell Shell, company db.Company, view ExchangeResultView) {
+	@Layout(shell) {
+		@pageHeader("Hasil Import", view.FileName) {
+			<a href={ companyPath(company.UrlKey, "/exchange") } class={ btnSecondary }>Export / Import</a>
+		}
+		<div class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+			@kpiCardSimple("Jenis data", view.Dataset, "")
+			@kpiCardSimple("Tersimpan", strconv.Itoa(view.Count), "")
+			@kpiCardSimple("Masalah", strconv.Itoa(len(view.Errors)), "")
+		</div>
+		<div class={ cardClass + " mt-6" }>
+			<div class={ cardTitleClass }>Rincian</div>
+			<div class="px-5 py-5 text-sm">
+				if view.Applied && view.Count > 0 {
+					<p class="text-ok">
+						{ strconv.Itoa(view.Count) } data berhasil disimpan ke pembukuan { company.Name }.
+					</p>
+				} else {
+					<p class="text-muted">Tidak ada data yang disimpan.</p>
+				}
+				if len(view.Errors) > 0 {
+					<ul class="mt-3 space-y-1 text-danger">
+						for i, e := range view.Errors {
+							if i < 50 {
+								<li>{ e }</li>
+							}
+						}
+					</ul>
+				}
+				if len(view.Warnings) > 0 {
+					<ul class="mt-3 space-y-1 text-muted">
+						for i, w := range view.Warnings {
+							if i < 20 {
+								<li>{ w }</li>
+							}
+						}
+					</ul>
+				}
+				<div class="mt-5 flex flex-wrap gap-2">
+					<a href={ companyPath(company.UrlKey, "/journals") } class={ btnPrimary }>Lihat jurnal</a>
+					<a href={ companyPath(company.UrlKey, "/accounts") } class={ btnSecondary }>Lihat daftar akun</a>
+					<a href={ companyPath(company.UrlKey, "/worksheet") } class={ btnSecondary }>Kertas kerja</a>
+				</div>
+			</div>
+		</div>
+	}
+}

@@ -1,0 +1,244 @@
+package templates
+
+import (
+	"strconv"
+
+	"accounting/internal/database/db"
+	"accounting/internal/models"
+)
+
+// PeriodsPage mengelola periode akuntansi (tahun buku): tambah periode,
+// tutup buku, buka lagi, dan pintu masuk ke pengisian saldo awal.
+// Rujukan: PSAK 201 par. 36-37 (frekuensi pelaporan), par. 45 (konsistensi),
+// par. 106-110 (dasar rekonsiliasi ekuitas antar periode).
+templ PeriodsPage(shell Shell, company db.Company, periods []models.PeriodView, hasOpening bool, errMsg string) {
+	@Layout(shell) {
+		<div class="flex flex-wrap items-end justify-between gap-4">
+			<div class="min-w-0">
+				<h1 class="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">Periode Akuntansi</h1>
+				<div class="mt-1.5 text-sm text-muted">
+					Tahun buku entitas. Periode yang ditutup dikunci: jurnal bertanggal di dalamnya ditolak,
+					dan laba periodenya dipindahkan ke akun Saldo Laba lewat jurnal penutup.
+				</div>
+			</div>
+			<a href={ openingPath(company.ID) } class={ btnSecondary }>Isi Saldo Awal</a>
+		</div>
+		if errMsg != "" {
+			@errBox(errMsg)
+		}
+		<div class={ cardClass + " mt-8" }>
+			<div class={ cardTitleClass }>Daftar Periode</div>
+			if len(periods) == 0 {
+				@emptyState("M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z", "Belum ada periode akuntansi", "Tambahkan tahun buku pertama, lalu isi saldo awalnya.")
+			} else {
+				<div class="overflow-x-auto">
+					<table class="w-full min-w-[720px] text-sm">
+						<thead>
+							<tr class="border-b border-line bg-panel/60">
+								<th class={ thClass }>Nama Periode</th>
+								<th class={ thClass }>Rentang</th>
+								<th class={ thClass }>Status</th>
+								<th class={ thClass }>Saldo Awal</th>
+								<th class={ thClass + " text-right" }>Aksi</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-line">
+							for _, p := range periods {
+								<tr class="transition-colors hover:bg-panel/60">
+									<td class="px-5 py-3.5">
+										<div class="font-medium text-ink">{ p.Name }</div>
+										if p.IsFirst {
+											<span class="mt-0.5 inline-flex items-center rounded bg-accent-wash px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
+												Periode pertama
+											</span>
+										}
+									</td>
+									<td class="num px-5 py-3.5 whitespace-nowrap text-label">
+										{ p.StartISO } <span class="text-muted">s.d.</span> { p.EndISO }
+									</td>
+									<td class="px-5 py-3.5">
+										if p.Status == "closed" {
+											<span class="inline-flex items-center gap-1.5 rounded-input bg-panel px-2.5 py-1 text-xs font-medium text-label">
+												{ p.StatusLabel }
+												if p.ClosedNote != "" {
+													<span class="text-muted">· { p.ClosedNote }</span>
+												}
+											</span>
+										} else {
+											<span class="inline-flex items-center gap-1.5 rounded-input bg-ok/10 px-2.5 py-1 text-xs font-medium text-ok">
+												{ p.StatusLabel }
+											</span>
+										}
+									</td>
+									<td class="px-5 py-3.5 text-xs text-muted">
+										if p.IsFirst && hasOpening {
+											<span class="text-ok">terisi</span>
+										} else if p.IsFirst {
+											<a href={ openingPath(company.ID) } class="font-medium text-accent hover:text-accent-hover hover:underline">belum diisi</a>
+										} else {
+											<span>tidak berlaku</span>
+										}
+									</td>
+									<td class="px-5 py-3.5 text-right">
+										if p.Status == "open" {
+											<form method="post" action={ periodAction(company.ID, p.ID, "/close") } class="inline">
+												<button type="submit" class={ btnSecondary + " px-3 py-1.5 text-xs" }>Tutup buku</button>
+											</form>
+										} else {
+											<form method="post" action={ periodAction(company.ID, p.ID, "/reopen") } class="inline">
+												<button type="submit" class={ btnGhost }>Buka lagi</button>
+											</form>
+										}
+									</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+		</div>
+		<div class={ cardClass + " mt-6 px-5 py-5" }>
+			<div class="text-sm font-semibold text-ink">Tambah Periode</div>
+			<p class="mt-1 text-sm text-muted">
+				Satu periode = satu tahun buku. Rentang tidak boleh tumpang tindih dengan periode lain.
+			</p>
+			<form method="post" action={ periodsPath(company.ID) } class="mt-4 grid gap-4 sm:grid-cols-3">
+				<div>
+					<label class="mb-1.5 block text-sm font-medium text-ink" for="name">Nama periode</label>
+					<input id="name" name="name" placeholder="Tahun Buku 2027" class={ inputClass }/>
+				</div>
+				<div>
+					@dateField("start_date", "start_date", "Tanggal awal", "")
+				</div>
+				<div>
+					@dateField("end_date", "end_date", "Tanggal akhir", "")
+				</div>
+				<div class="sm:col-span-3">
+					<button type="submit" class={ btnPrimary }>Simpan periode</button>
+				</div>
+			</form>
+		</div>
+		<p class="mt-6 text-xs leading-relaxed text-muted">
+			Rujukan: PSAK 201 (dulu PSAK 1) par. 36-37 frekuensi pelaporan, par. 45 konsistensi penyajian antar periode,
+			par. 10 huruf f laporan posisi keuangan awal periode saat penyajian kembali.
+			Pembulatan penyajian angka diatur pada halaman Pengaturan.
+		</p>
+	}
+}
+
+// OpeningBalancePage adalah form saldo awal periode pertama. Nilai disimpan
+// sebagai jurnal khusus sehingga langsung terlihat pada neraca saldo.
+templ OpeningBalancePage(shell Shell, company db.Company, view models.OpeningView, errMsg string) {
+	@Layout(shell) {
+		<div class="flex flex-wrap items-end justify-between gap-4">
+			<div class="min-w-0">
+				<h1 class="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">Saldo Awal</h1>
+				<div class="mt-1.5 text-sm text-muted">
+					Saldo tiap akun pada awal periode pertama. Total debit wajib sama dengan total kredit.
+				</div>
+			</div>
+			<a href={ periodsPath(company.ID) } class={ btnSecondary }>Kembali ke Periode</a>
+		</div>
+		if errMsg != "" {
+			@errBox(errMsg)
+		}
+		if !view.HasPeriod {
+			<div class={ cardClass + " mt-8" }>
+				@emptyState("M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z", "Belum ada periode akuntansi", "Saldo awal menempel pada periode pertama. Buat periodenya dulu.")
+			</div>
+		} else {
+			<div class={ cardClass + " mt-8" }>
+				<div class={ cardTitleClass }>
+					{ view.Period.Name } · mulai { view.Period.StartLabel }
+				</div>
+				<form method="post" action={ openingPath(company.ID) }>
+					<div class="overflow-x-auto">
+						<table class="w-full min-w-[720px] text-sm">
+							<thead>
+								<tr class="border-b border-line bg-panel/60">
+									<th class={ thClass }>Kode</th>
+									<th class={ thClass }>Nama Akun</th>
+									<th class={ thClass }>Klasifikasi</th>
+									<th class={ thClass + " text-right" }>Debit</th>
+									<th class={ thClass + " text-right" }>Kredit</th>
+								</tr>
+							</thead>
+							<tbody class="divide-y divide-line">
+								for _, line := range view.Lines {
+									<tr class="transition-colors hover:bg-panel/60">
+										<td class="num px-5 py-2.5 text-label">{ line.Code }</td>
+										<td class="px-5 py-2.5 text-label">{ line.Name }</td>
+										<td class="px-5 py-2.5 text-xs text-muted">{ line.SubLabel }</td>
+										<td class="px-5 py-2">
+											<input
+												name={ "debit_" + strconv.FormatInt(line.AccountID, 10) }
+												value={ openingValue(line.Debit) }
+												inputmode="decimal"
+												class={ inputClass + " num w-40 text-right" }
+											/>
+										</td>
+										<td class="px-5 py-2">
+											<input
+												name={ "credit_" + strconv.FormatInt(line.AccountID, 10) }
+												value={ openingValue(line.Credit) }
+												inputmode="decimal"
+												class={ inputClass + " num w-40 text-right" }
+											/>
+										</td>
+									</tr>
+								}
+							</tbody>
+							<tfoot>
+								<tr class="border-t-2 border-line bg-accent-wash">
+									<td class="px-5 py-3 font-semibold text-ink" colspan="3">Jumlah</td>
+									<td class="num px-5 py-3 text-right font-semibold text-ink">
+										{ models.FormatCents(view.TotalDebit) }
+									</td>
+									<td class="num px-5 py-3 text-right font-semibold text-ink">
+										{ models.FormatCents(view.TotalCredit) }
+									</td>
+								</tr>
+							</tfoot>
+						</table>
+					</div>
+					<div class="flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-4">
+						<div class="text-xs text-muted">
+							if view.SavedAt != "" {
+								Saldo awal tersimpan bertanggal <span class="num">{ view.SavedAt }</span>.
+								Menyimpan lagi akan mengganti isi sebelumnya.
+							} else {
+								Belum ada saldo awal tersimpan.
+							}
+						</div>
+						<button type="submit" class={ btnPrimary }>Simpan saldo awal</button>
+					</div>
+				</form>
+			</div>
+			<p class="mt-6 text-xs leading-relaxed text-muted">
+				Rujukan: PSAK 201 par. 10 huruf f dan par. 40A-40D tentang laporan posisi keuangan awal periode
+				saat entitas menyajikan kembali pos laporan keuangan.
+			</p>
+		}
+	}
+}
+
+// openingValue menampilkan nilai sen untuk kolom input (kosong bila nol).
+func openingValue(cents int64) string {
+	if cents == 0 {
+		return ""
+	}
+	return models.FormatCents(cents)
+}
+
+func periodsPath(companyID int64) templ.SafeURL {
+	return templ.URL("/companies/" + strconv.FormatInt(companyID, 10) + "/periods")
+}
+
+func openingPath(companyID int64) templ.SafeURL {
+	return templ.URL("/companies/" + strconv.FormatInt(companyID, 10) + "/periods/opening")
+}
+
+func periodAction(companyID, periodID int64, action string) templ.SafeURL {
+	return templ.URL("/companies/" + strconv.FormatInt(companyID, 10) + "/periods/" +
+		strconv.FormatInt(periodID, 10) + action)
+}

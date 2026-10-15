@@ -1,0 +1,525 @@
+package templates
+
+import "accounting/internal/models"
+
+// Konvensi kelas bersama. Semua input, tombol, dan tabel memakai konstanta
+// ini supaya satu halaman dan halaman lain terasa satu produk.
+
+// inputClass adalah gaya dasar seluruh kontrol form: border struktur,
+// bayangan tipis untuk kedalaman, focus ring aksen.
+const inputClass = "w-full rounded-input border border-line bg-white px-3 py-2 text-label shadow-input transition-colors placeholder:text-muted focus:border-accent-soft focus:outline-none focus:ring-4 focus:ring-accent/10"
+
+// btnPrimary untuk aksi utama; btnSecondary untuk aksi sekunder;
+// btnGhost untuk aksi tersier (hapus/batalkan).
+const btnPrimary = "inline-flex items-center justify-center gap-1.5 rounded-input bg-accent px-4 py-2 text-sm font-medium text-white shadow-btn transition-all hover:bg-accent-hover hover:shadow-btnHover active:scale-[0.96] focus:outline-none focus-visible:ring-4 focus-visible:ring-accent/20"
+const btnSecondary = "inline-flex items-center justify-center gap-1.5 rounded-input border border-line bg-white px-4 py-2 text-sm font-medium text-label shadow-input transition-all hover:border-accent-soft hover:text-accent active:scale-[0.96] focus:outline-none focus-visible:ring-4 focus-visible:ring-accent/10"
+const btnGhost = "inline-flex items-center rounded-input px-2.5 py-1.5 text-xs text-muted transition-colors hover:bg-panel hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/20"
+
+// thClass untuk kepala tabel: kecil, huruf besar, tenang, tanpa border berat.
+const thClass = "px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted"
+
+// cardClass untuk wadah konten utama halaman.
+const cardClass = "rounded-card border border-line bg-white shadow-card"
+
+// cardTitleClass untuk judul panel di dalam kartu.
+const cardTitleClass = "border-b border-line px-5 py-3.5 text-sm font-semibold text-ink"
+
+// errBoxClass untuk kotak pesan error inline.
+const errBoxClass = "mt-6 flex items-start gap-2.5 rounded-input border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger"
+
+// navClass memberi gaya tautan navigasi sidebar: aktif (ungu lembut) atau biasa.
+func navClass(active bool) string {
+	if active {
+		return "flex items-center gap-2.5 rounded-nav bg-accent-wash px-3 py-2 text-sm font-medium text-accent"
+	}
+	return "flex items-center gap-2.5 rounded-nav px-3 py-2 text-sm text-label transition-colors hover:bg-panel hover:text-ink"
+}
+
+// companyPath membangun alamat halaman perusahaan memakai kunci acak
+// (companies.url_key), bukan nomor id, supaya urutan pembukuan tidak bisa
+// ditebak dari alamat.
+func companyPath(companyKey string, suffix string) templ.SafeURL {
+	return templ.URL("/companies/" + companyKey + suffix)
+}
+
+// initials mengambil 1-2 huruf awal untuk bulatan profil.
+func initials(name string) string {
+	if name == "" {
+		return "?"
+	}
+	out := []byte{}
+	for i := 0; i < len(name) && len(out) < 2; i++ {
+		c := name[i]
+		if c == ' ' || c == '-' || c == '_' {
+			continue
+		}
+		if len(out) == 0 || (i > 0 && (name[i-1] == ' ' || name[i-1] == '-' || name[i-1] == '_')) {
+			out = append(out, c)
+		}
+	}
+	if len(out) == 0 {
+		return "?"
+	}
+	return string(out)
+}
+
+// roleLabel menerjemahkan kode peran ke Bahasa Indonesia yang manusiawi.
+func roleLabel(role string) string {
+	switch role {
+	case "owner":
+		return "Owner"
+	case "admin":
+		return "Admin"
+	case "staff":
+		return "Staf"
+	default:
+		return role
+	}
+}
+
+// journalStatusLabel menerjemahkan status jurnal ke Bahasa Indonesia.
+func journalStatusLabel(s string) string {
+	switch s {
+	case "draft":
+		return "Draf"
+	case "posted":
+		return "Terposting"
+	case "void":
+		return "Batal"
+	default:
+		return s
+	}
+}
+
+// navIcon merender ikon menu sidebar sesuai nama menu.
+templ navIcon(name string) {
+	<svg class="h-4 w-4 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+		if name == "dashboard" {
+			<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75h6v6h-6zM14.25 3.75h6v6h-6zM3.75 14.25h6v6h-6zM14.25 14.25h6v6h-6z"/>
+		} else if name == "journals" {
+			<path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/>
+		} else if name == "ledger" {
+			<path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zM4.125 6.75a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"/>
+		} else if name == "pl" {
+			<path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/>
+		} else if name == "bs" {
+			<path stroke-linecap="round" stroke-linejoin="round" d="M12 3v18m0-18L5.25 6m6.75-3l6.75 3M8.25 21h7.5M4.5 15.75a3.375 3.375 0 006.75 0L7.875 6.75 4.5 15.75zm8.25 0a3.375 3.375 0 006.75 0L16.125 6.75 12.75 15.75z"/>
+		} else if name == "adjustments" {
+			<path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"/>
+		} else if name == "worksheet" {
+			<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5v13.5H3.75zM3.75 9.75h16.5M3.75 14.25h16.5M9 5.25v13.5M15 5.25v13.5"/>
+		} else if name == "statements" {
+			<path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+		} else if name == "periods" {
+			<path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"/>
+		} else if name == "settings" {
+			<path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.396.505.71.93.78l.893.15c.543.09.94.559.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.855.108 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.203.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 01-.12-1.449l.527-.737c.25-.35.272-.806.108-1.204-.165-.397-.506-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.108-1.203l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z"/>
+			<path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+		} else if name == "exchange" {
+			<path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/>
+		} else if name == "invitations" {
+			<path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z"/>
+		}
+	</svg>
+}
+
+// navLinks merender menu sidebar sesuai urutan kerja akuntansi:
+// Dashboard, Jurnal Umum, Buku Besar, Laporan Laba Rugi, Neraca,
+// Jurnal Penyesuaian, Kertas Kerja, Laporan Keuangan, lalu Periode,
+// Undangan, dan Pengaturan. Dipanggil dua kali (sidebar desktop dan laci
+// mobile), jadi cukup diubah di satu tempat.
+templ navLinks(shell Shell) {
+	if shell.CompanyID != 0 {
+		<a href={ companyPath(shell.CompanyKey, "/dashboard") } class={ navClass(shell.Active == "dashboard") }>
+			@navIcon("dashboard")
+			Dashboard
+		</a>
+		<a href={ companyPath(shell.CompanyKey, "/journals") } class={ navClass(shell.Active == "journals") }>
+			@navIcon("journals")
+			Jurnal Umum
+		</a>
+		<a href={ companyPath(shell.CompanyKey, "/ledger") } class={ navClass(shell.Active == "ledger") }>
+			@navIcon("ledger")
+			Buku Besar
+		</a>
+		<a href={ companyPath(shell.CompanyKey, "/reports/pl") } class={ navClass(shell.Active == "pl") }>
+			@navIcon("pl")
+			Laporan Laba Rugi
+		</a>
+		<a href={ companyPath(shell.CompanyKey, "/reports/bs") } class={ navClass(shell.Active == "bs") }>
+			@navIcon("bs")
+			Neraca
+		</a>
+		<a href={ companyPath(shell.CompanyKey, "/adjustments") } class={ navClass(shell.Active == "adjustments") }>
+			@navIcon("adjustments")
+			Jurnal Penyesuaian
+		</a>
+		<a href={ companyPath(shell.CompanyKey, "/worksheet") } class={ navClass(shell.Active == "worksheet") }>
+			@navIcon("worksheet")
+			Kertas Kerja
+		</a>
+		<a href={ companyPath(shell.CompanyKey, "/reports") } class={ navClass(shell.Active == "statements") }>
+			@navIcon("statements")
+			Laporan Keuangan
+		</a>
+		<div class="my-2 border-t border-line"></div>
+		if shell.Role == "owner" || shell.Role == "admin" {
+			<a href={ companyPath(shell.CompanyKey, "/periods") } class={ navClass(shell.Active == "periods") }>
+				@navIcon("periods")
+				Periode
+			</a>
+		}
+		if shell.Role == "owner" || shell.Role == "admin" {
+			<a href={ companyPath(shell.CompanyKey, "/exchange") } class={ navClass(shell.Active == "exchange") }>
+				@navIcon("exchange")
+				Export / Import
+			</a>
+		}
+		if shell.Role == "owner" {
+			<a href={ companyPath(shell.CompanyKey, "/settings") } class={ navClass(shell.Active == "settings") }>
+				@navIcon("settings")
+				Pengaturan
+			</a>
+		}
+	}
+}
+
+// companyPicker adalah dropdown perusahaan aktif di sidebar: pindah perusahaan
+// tanpa kembali ke halaman daftar.
+templ companyPicker(shell Shell) {
+	<details class="js-menu group relative">
+		<summary class="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-2 rounded-input border border-line bg-white px-3 py-2 text-left transition-colors hover:border-accent-soft">
+			<span class="flex min-w-0 items-center gap-2">
+				<span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-input bg-accent-wash text-[11px] font-semibold uppercase tracking-wide text-accent">
+					{ initials(shell.CompanyName) }
+				</span>
+				<span class="min-w-0">
+					<span class="block text-sm font-medium leading-snug text-ink line-clamp-2">
+						if shell.CompanyName != "" {
+							{ shell.CompanyName }
+						} else {
+							Pilih perusahaan
+						}
+					</span>
+					<span class="block truncate text-[11px] text-muted">{ roleLabel(shell.Role) }</span>
+				</span>
+			</span>
+			<svg class="h-3.5 w-3.5 shrink-0 text-muted" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+				<path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/>
+			</svg>
+		</summary>
+		<div class="absolute left-0 right-0 z-20 mt-2 max-h-80 overflow-y-auto rounded-card border border-line bg-white py-1.5 shadow-dropdown">
+			for _, c := range shell.Companies {
+				<a
+					href={ companyPath(c.Key, "/dashboard") }
+					class="flex items-center justify-between gap-2 px-3 py-2 text-sm transition-colors hover:bg-panel"
+				>
+					<span class="min-w-0 truncate text-ink">{ c.Name }</span>
+					if c.Current {
+						<svg class="h-4 w-4 shrink-0 text-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/>
+						</svg>
+					} else {
+						<span class="shrink-0 text-[10px] uppercase tracking-wide text-muted">{ c.Role }</span>
+					}
+				</a>
+			}
+			<div class="mt-1 border-t border-line pt-1.5">
+				<a href="/" class="flex items-center gap-2 px-3 py-2 text-sm text-muted transition-colors hover:bg-panel hover:text-ink">
+					<svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21"/>
+					</svg>
+					Semua perusahaan
+				</a>
+			</div>
+		</div>
+	</details>
+}
+
+// userMenu adalah komponen akun di navbar: satu foto profil (inisial) dan
+// nama; ketika diklik muncul popup kecil berisi peran, perusahaan aktif,
+// tautan pengaturan, dan tombol keluar.
+// placement "top" membuka popup ke atas (dipakai di kaki sidebar), "bottom"
+// membuka ke bawah (dipakai di navbar).
+templ userMenu(shell Shell, placement string) {
+	<details class="js-menu group relative">
+		<summary class="flex min-h-[44px] cursor-pointer list-none items-center gap-2.5 rounded-input px-2 py-1.5 transition-colors hover:bg-panel focus:outline-none focus-visible:ring-4 focus-visible:ring-accent/20">
+			<span class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent text-xs font-semibold uppercase tracking-wide text-white shadow-btn">
+				{ initials(shell.UserName) }
+			</span>
+			<span class="min-w-0 flex-1 text-left">
+				<span class="block truncate text-sm font-medium text-ink">{ shell.UserName }</span>
+				<span class="block truncate text-[11px] text-muted">{ roleLabel(shell.Role) }</span>
+			</span>
+			<svg class="h-3.5 w-3.5 shrink-0 text-muted transition-transform group-open:rotate-180" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+				<path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/>
+			</svg>
+		</summary>
+		<div class={ userMenuPanelClass(placement) }>
+			<div class="flex items-center gap-2.5 border-b border-line px-3 pb-3 pt-2">
+				<span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-semibold uppercase text-white">
+					{ initials(shell.UserName) }
+				</span>
+				<span class="min-w-0">
+					<span class="block text-[10px] font-semibold uppercase tracking-wider text-muted">{ roleLabel(shell.Role) }</span>
+					<span class="block truncate text-sm font-semibold text-ink">{ shell.UserName }</span>
+					if shell.CompanyName != "" {
+						<span class="mt-0.5 block text-[11px] leading-snug text-muted">{ shell.CompanyName }</span>
+					}
+				</span>
+			</div>
+			<div class="pt-1.5">
+				if shell.CompanyKey != "" && shell.Role == "owner" {
+					<a href={ companyPath(shell.CompanyKey, "/invitations") } class="flex items-center gap-2 px-3 py-2 text-sm text-label transition-colors hover:bg-panel hover:text-ink">
+						<svg class="h-4 w-4 text-muted" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z"/>
+						</svg>
+						Undangan
+					</a>
+				}
+				<a href="/profile" class="flex items-center gap-2 px-3 py-2 text-sm text-label transition-colors hover:bg-panel hover:text-ink">
+					<svg class="h-4 w-4 text-muted" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/>
+					</svg>
+					Pengaturan profil
+				</a>
+				<button hx-post="/logout" hx-swap="none" class="flex w-full items-center gap-2 border-t border-line px-3 py-2.5 text-left text-sm font-semibold text-danger transition-colors hover:bg-danger hover:text-white">
+					<svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9"/>
+					</svg>
+					Keluar
+				</button>
+			</div>
+		</div>
+	</details>
+}
+
+// brandMark adalah logo aplikasi: kotak aksen + ikon buku besar.
+templ brandMark(size string) {
+	<span class={ "flex " + size + " items-center justify-center rounded-xl bg-accent text-white shadow-btn" }>
+		<svg class="h-[58%] w-[58%]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+			<path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5L12 3l9 4.5M3 7.5v9L12 21l9-4.5v-9M3 7.5L12 12l9-4.5M12 12v9"/>
+		</svg>
+	</span>
+}
+
+// errBox adalah kotak pesan error dengan ikon; dipakai di semua halaman.
+templ errBox(msg string) {
+	<div class={ errBoxClass }>
+		<svg class="mt-0.5 h-4 w-4 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+			<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/>
+		</svg>
+		<span>{ msg }</span>
+	</div>
+}
+
+// emptyIcon adalah lingkaran lembut berisi ikon untuk empty state.
+templ emptyIcon(iconPath string) {
+	<span class="flex h-12 w-12 items-center justify-center rounded-full bg-accent-wash text-accent">
+		<svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+			<path stroke-linecap="round" stroke-linejoin="round" d={ iconPath }/>
+		</svg>
+	</span>
+}
+
+// emptyState adalah pesan kosong yang dirancang: ikon, judul, deskripsi,
+// dan aksi opsional lewat child block.
+// emptyAction dipakai (bukan Component argumen) demi kompatibilitas parser.
+templ emptyState(iconPath string, title string, desc string) {
+	<div class="flex flex-col items-center justify-center px-6 py-14 text-center">
+		@emptyIcon(iconPath)
+		<div class="mt-4 text-sm font-semibold text-ink">{ title }</div>
+		<p class="mt-1 max-w-sm text-sm text-muted">{ desc }</p>
+		{ children... }
+	</div>
+}
+
+// pageHeader adalah kepala halaman standar: judul, keterangan, dan slot aksi
+// di kanan. Dipakai semua halaman supaya ritme judul seragam.
+templ pageHeader(title string, desc string) {
+	<div class="flex flex-wrap items-end justify-between gap-4">
+		<div class="min-w-0">
+			<h1 class="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">{ title }</h1>
+			if desc != "" {
+				<div class="mt-1.5 text-sm text-muted">{ desc }</div>
+			}
+		</div>
+		<div class="flex flex-wrap items-center gap-2">
+			{ children... }
+		</div>
+	</div>
+}
+
+// appFooter adalah kaki halaman yang sama untuk seluruh halaman aplikasi.
+templ appFooter() {
+	<footer class="border-t border-line bg-white px-4 py-4 sm:px-6 lg:px-8 xl:px-10">
+		<div class="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+			<span>
+				<span class="font-medium text-label">Akunting</span> · aplikasi akuntansi multi-perusahaan,
+				laporan keuangan disusun menurut PSAK 201 (dulu PSAK 1).
+			</span>
+			<span>© 2026 Akunting. Seluruh hak cipta dilindungi.</span>
+		</div>
+	</footer>
+}
+
+// Layout adalah kerangka aplikasi: sidebar tetap di kiri pada layar lebar,
+// laci menu pada layar sempit, dan area konten yang memakai hampir seluruh
+// lebar layar. Bila shell.Plain diisi, halaman dirender tanpa sidebar dan
+// tanpa menu perusahaan (dipakai halaman pemilihan pembukuan).
+templ Layout(shell Shell) {
+	<!DOCTYPE html>
+	<html lang="id">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ shell.Title } · Akunting</title>
+			<link rel="stylesheet" href="/static/css/app.css"/>
+			<script src="/static/js/htmx.min.js" defer></script>
+			<script src="/static/js/chart.js" defer></script>
+			<script src="/static/js/datefield.js" defer></script>
+			<script src="/static/js/negative.js" defer></script>
+			<script src="/static/js/ui.js" defer></script>
+		</head>
+		<body class="min-h-screen bg-panel font-sans text-label">
+			if shell.Plain {
+				// Halaman pemilihan pembukuan: navbar atas saja, tanpa sidebar.
+				<div class="flex min-h-screen flex-col">
+					<header class="border-b border-line bg-white">
+						<div class="flex items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8 xl:px-10">
+							<a href="/" class="flex shrink-0 items-center gap-2.5">
+								@brandMark("h-9 w-9")
+								<span class="text-lg font-semibold tracking-tight text-ink">Akunting</span>
+							</a>
+							@userMenu(shell, "bottom")
+						</div>
+					</header>
+					<main class="min-w-0 flex-1 px-4 py-8 sm:px-6 lg:px-8 lg:py-10 xl:px-10">
+						{ children... }
+					</main>
+					@appFooter()
+				</div>
+			} else {
+				<div class="flex min-h-screen">
+					<aside class="sticky top-0 hidden h-screen w-72 shrink-0 flex-col border-r border-line bg-white lg:flex">
+						<div class="flex h-16 shrink-0 items-center gap-2.5 border-b border-line px-5">
+							@brandMark("h-9 w-9")
+							<span class="text-lg font-semibold tracking-tight text-ink">Akunting</span>
+						</div>
+						<div class="shrink-0 border-b border-line px-4 py-3">
+							<div class="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">Perusahaan</div>
+							@companyPicker(shell)
+						</div>
+						<nav class="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-3">
+							@navLinks(shell)
+						</nav>
+						<div class="shrink-0 border-t border-line px-4 py-3">
+							@userMenu(shell, "top")
+						</div>
+					</aside>
+					<div class="flex min-w-0 flex-1 flex-col">
+						<header class="sticky top-0 z-10 border-b border-line bg-white/90 backdrop-blur-sm lg:hidden">
+							<div class="flex items-center justify-between gap-3 px-4 py-2.5">
+								<a href="/" class="flex shrink-0 items-center gap-2.5">
+									@brandMark("h-8 w-8")
+									<span class="text-lg font-semibold tracking-tight text-ink">Akunting</span>
+								</a>
+								<div class="flex items-center gap-2">
+									@userMenu(shell, "bottom")
+									<details class="group relative">
+										<summary class="flex min-h-[44px] cursor-pointer list-none items-center gap-2 rounded-input border border-line px-3 text-sm text-label transition-colors hover:border-accent-soft">
+											Menu
+										</summary>
+										<div class="absolute right-0 z-20 mt-2 w-72 rounded-card border border-line bg-white p-3 shadow-dropdown">
+											<div class="mb-2">
+												@companyPicker(shell)
+											</div>
+											<div class="flex flex-col gap-0.5">
+												@navLinks(shell)
+											</div>
+										</div>
+									</details>
+								</div>
+							</div>
+						</header>
+						<main class="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8 xl:px-10">
+							{ children... }
+						</main>
+						@appFooter()
+					</div>
+				</div>
+			}
+		</body>
+	</html>
+}
+
+// eyeToggle adalah tombol mata untuk menampilkan/menyembunyikan password.
+// Target sentuh memenuhi 44px lewat padding ekstensif.
+templ eyeToggle() {
+	<button
+		type="button"
+		aria-label="Tampilkan password"
+		onclick="var i=this.previousElementSibling;var on=i.type==='password';i.type=on?'text':'password';this.querySelector('.eye-on').classList.toggle('hidden',!on);this.querySelector('.eye-off').classList.toggle('hidden',on);"
+		class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted transition-colors hover:bg-panel hover:text-ink"
+	>
+		<svg class="eye-on hidden h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+			<path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/>
+			<path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+		</svg>
+		<svg class="eye-off h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+			<path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243"/>
+		</svg>
+	</button>
+}
+
+// dateField adalah kolom tanggal Indonesia (dd/mm/yyyy) dengan kalender kecil.
+// isoValue diisi nilai ISO dari server; tampilannya diubah ke dd/mm/yyyy.
+templ dateField(id string, name string, label string, isoValue string) {
+	<div class="js-datefield relative">
+		if label != "" {
+			<label class="mb-1.5 block text-sm font-medium text-ink" for={ id }>{ label }</label>
+		}
+		<div class="relative">
+			<input
+				id={ id }
+				name={ name }
+				type="text"
+				inputmode="numeric"
+				maxlength="10"
+				autocomplete="off"
+				placeholder="dd/mm/yyyy"
+				value={ models.DateFieldValue(isoValue) }
+				class={ inputClass + " num pr-10" }
+			/>
+			<button
+				type="button"
+				class="js-datefield-toggle absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1.5 text-muted transition-colors hover:bg-panel hover:text-ink"
+				aria-label="Buka kalender"
+			>
+				<svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"/>
+				</svg>
+			</button>
+		</div>
+		<div class="js-datefield-panel absolute z-30 mt-1 hidden w-64 rounded-card border border-line bg-white p-3 shadow-dropdown"></div>
+		<p class="js-datefield-error mt-1 hidden text-xs text-danger">Tanggal harus berformat dd/mm/yyyy.</p>
+	</div>
+}
+
+// passwordInput adalah kolom password lengkap dengan tombol mata.
+templ passwordInput(id string, name string, label string, autocomplete string, required bool) {
+	<div>
+		<label class="mb-1.5 block text-sm font-medium text-ink" for={ id }>{ label }</label>
+		<div class="relative">
+			<input
+				id={ id }
+				name={ name }
+				type="password"
+				autocomplete={ autocomplete }
+				required?={ required }
+				class={ inputClass + " pr-11" }
+			/>
+			@eyeToggle()
+		</div>
+	</div>
+}

@@ -1,0 +1,125 @@
+package templates
+
+import (
+	"accounting/internal/database/db"
+	"accounting/internal/models"
+)
+
+// worksheetCell merender satu sel angka kertas kerja (kosong bila nol).
+templ worksheetCell(view models.WorksheetView, amount int64, strong bool) {
+	<td class="num px-2 py-2 text-right text-ink">
+		if amount != 0 {
+			if strong {
+				{ view.Money(amount) }
+			} else {
+				{ view.Money(amount) }
+			}
+		}
+	</td>
+}
+
+// WorksheetPage menampilkan Kertas Kerja (neraca lajur): neraca saldo,
+// penyesuaian, saldo setelah penyesuaian, laba rugi, dan neraca.
+templ WorksheetPage(shell Shell, company db.Company, view models.WorksheetView) {
+	@Layout(shell) {
+		@pageHeader("Kertas Kerja", company.Name+" · "+view.PeriodName+" ("+view.PeriodStatus+") · per "+view.DateToLabel) {
+			<a href={ companyPath(company.UrlKey, "/adjustments") } class={ btnSecondary }>Jurnal Penyesuaian</a>
+			<a href={ companyPath(company.UrlKey, "/reports") } class={ btnPrimary }>Laporan Keuangan</a>
+		}
+		<form method="get" class={ cardClass + " mt-6 flex flex-wrap items-end gap-4 px-5 py-4" }>
+			<div>
+				<label class="mb-1.5 block text-sm font-medium text-ink" for="period">Periode akuntansi</label>
+				<select id="period" name="period" class={ inputClass + " w-56" }>
+					<option value="">Periode terbaru</option>
+					for _, p := range view.Periods {
+						<option value={ models.FormatThousands(p.ID) } selected?={ p.ID == view.SelectedPeriodID }>
+							{ p.Name } · { p.StatusLabel }
+						</option>
+					}
+				</select>
+			</div>
+			<button type="submit" class={ btnPrimary }>Tampilkan</button>
+			<span class="text-xs text-muted">{ view.RoundingLabel }</span>
+		</form>
+		if !view.HasData {
+			<div class={ cardClass + " mt-6" }>
+				@emptyState("M3.75 5.25h16.5v13.5H3.75zM3.75 9.75h16.5M3.75 14.25h16.5M9 5.25v13.5M15 5.25v13.5", "Belum ada mutasi pada periode ini", "Kertas kerja tersusun setelah ada jurnal umum atau jurnal penyesuaian.") {
+				}
+			</div>
+		} else {
+			<div class={ cardClass + " mt-6" }>
+				<div class={ cardTitleClass }>
+					<div class="flex flex-wrap items-center justify-between gap-3">
+						<span>Neraca Lajur { view.PeriodName }</span>
+						<span class="text-xs font-normal text-muted">Laba (rugi) periode: { view.Money(view.NetIncome) }</span>
+					</div>
+				</div>
+				<div class="overflow-x-auto">
+					<table class="w-full min-w-[1360px] text-[13px]">
+						<thead>
+							<tr class="border-b border-line bg-panel/60 text-[11px] uppercase tracking-wider text-muted">
+								<th class="px-3 py-2.5 text-left" rowspan="2">Kode</th>
+								<th class="px-3 py-2.5 text-left" rowspan="2">Nama Akun</th>
+								<th class="px-3 py-2 text-center" colspan="2">Neraca Saldo</th>
+								<th class="px-3 py-2 text-center" colspan="2">Penyesuaian</th>
+								<th class="px-3 py-2 text-center" colspan="2">Setelah Penyesuaian</th>
+								<th class="px-3 py-2 text-center" colspan="2">Laba Rugi</th>
+								<th class="px-3 py-2 text-center" colspan="2">Neraca</th>
+							</tr>
+							<tr class="border-b border-line bg-panel/60 text-[11px] uppercase tracking-wider text-muted">
+								<th class="px-2 py-2 text-right">Debit</th>
+								<th class="px-2 py-2 text-right">Kredit</th>
+								<th class="px-2 py-2 text-right">Debit</th>
+								<th class="px-2 py-2 text-right">Kredit</th>
+								<th class="px-2 py-2 text-right">Debit</th>
+								<th class="px-2 py-2 text-right">Kredit</th>
+								<th class="px-2 py-2 text-right">Debit</th>
+								<th class="px-2 py-2 text-right">Kredit</th>
+								<th class="px-2 py-2 text-right">Debit</th>
+								<th class="px-2 py-2 text-right">Kredit</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-line">
+							for _, row := range view.Rows {
+								<tr class="transition-colors hover:bg-panel/60">
+									<td class="num px-3 py-2 text-xs text-muted">{ row.Code }</td>
+									<td class="px-3 py-2 font-medium text-ink">{ row.Name }</td>
+									@worksheetCell(view, row.SaldoDebit, false)
+									@worksheetCell(view, row.SaldoCredit, false)
+									@worksheetCell(view, row.AdjDebit, false)
+									@worksheetCell(view, row.AdjCredit, false)
+									@worksheetCell(view, row.FinalDebit, false)
+									@worksheetCell(view, row.FinalCredit, false)
+									@worksheetCell(view, row.PLDebit, false)
+									@worksheetCell(view, row.PLCredit, false)
+									@worksheetCell(view, row.BalanceDebit, false)
+									@worksheetCell(view, row.BalanceCredit, false)
+								</tr>
+							}
+						</tbody>
+						<tfoot>
+							<tr class="border-t-2 border-line bg-accent-wash font-semibold">
+								<td class="px-3 py-3 text-ink" colspan="2">Jumlah</td>
+								<td class="num px-2 py-3 text-right text-ink">{ view.Money(view.Totals.SaldoDebit) }</td>
+								<td class="num px-2 py-3 text-right text-ink">{ view.Money(view.Totals.SaldoCredit) }</td>
+								<td class="num px-2 py-3 text-right text-ink">{ view.Money(view.Totals.AdjDebit) }</td>
+								<td class="num px-2 py-3 text-right text-ink">{ view.Money(view.Totals.AdjCredit) }</td>
+								<td class="num px-2 py-3 text-right text-ink">{ view.Money(view.Totals.FinalDebit) }</td>
+								<td class="num px-2 py-3 text-right text-ink">{ view.Money(view.Totals.FinalCredit) }</td>
+								<td class="num px-2 py-3 text-right text-ink">{ view.Money(view.Totals.PLDebit) }</td>
+								<td class="num px-2 py-3 text-right text-ink">{ view.Money(view.Totals.PLCredit) }</td>
+								<td class="num px-2 py-3 text-right text-ink">{ view.Money(view.Totals.BalanceDebit) }</td>
+								<td class="num px-2 py-3 text-right text-ink">{ view.Money(view.Totals.BalanceCredit) }</td>
+							</tr>
+						</tfoot>
+					</table>
+				</div>
+			</div>
+			<p class="mt-6 text-xs leading-relaxed text-muted">
+				Kolom penyesuaian mengambil jurnal bertanda penyesuaian pada periode ini. Kolom laba rugi memuat
+				akun pendapatan dan beban, kolom neraca memuat aset, liabilitas, dan ekuitas. Selisih antara
+				jumlah kolom laba rugi dan kolom neraca adalah laba (rugi) periode berjalan.
+			</p>
+		}
+	}
+}

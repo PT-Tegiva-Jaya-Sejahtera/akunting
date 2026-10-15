@@ -1,0 +1,47 @@
+/* Font ter-embed (variable font, latin subset): tanpa dependensi eksternal.
+   Pasangan tipografi: Inter untuk antarmuka, tabel, dan angka (angka tabular);
+   Plus Jakarta Sans untuk judul, merek, dan angka besar. */
+@font-face {
+  font-family: 'Inter';
+  src: url('/static/fonts/inter-var-100-900.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  src: url('/static/fonts/jakarta-var-200-800.woff2') format('woff2');
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Source Code Pro';
+  src: url('/static/fonts/source-code-pro.woff2') format('woff2');
+  font-weight: 400 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    -webkit-font-smoothing: antialiased;
+    text-wrap: pretty;
+  }
+  h1, h2, h3 {
+    text-wrap: balance;
+    font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+    letter-spacing: -0.015em;
+  }
+  /* Angka tidak lagi monospace: Inter dengan angka tabular supaya kolom
+     angka tetap lurus tanpa kehilangan keterbacaan. */
+  .num, .tabular {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+}

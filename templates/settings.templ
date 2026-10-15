@@ -1,0 +1,150 @@
+package templates
+
+import (
+	"strconv"
+	"time"
+
+	"accounting/internal/database/db"
+	"accounting/internal/models"
+)
+
+// roundingOptions merender pilihan satuan pembulatan penyajian angka
+// (PSAK 201 par. 53 huruf d).
+templ roundingOptions(current string) {
+	<option value={ models.RoundingFull } selected?={ current == models.RoundingFull || current == "" }>Rupiah penuh</option>
+	<option value={ models.RoundingThousand } selected?={ current == models.RoundingThousand }>Ribuan Rupiah</option>
+	<option value={ models.RoundingMillion } selected?={ current == models.RoundingMillion }>Jutaan Rupiah</option>
+}
+
+// roleOptions merender pilihan peran pada select form.
+templ roleOptions(current string) {
+	<option value="owner" selected?={ current == "owner" }>owner</option>
+	<option value="admin" selected?={ current == "admin" }>admin</option>
+	<option value="staff" selected?={ current == "staff" }>staff</option>
+}
+
+// SettingsPage adalah manajemen user & peran per perusahaan (khusus owner).
+templ SettingsPage(shell Shell, company db.Company, members []db.ListCompanyUsersRow, errMsg string) {
+	@Layout(shell) {
+		<div class="flex flex-wrap items-end justify-between gap-4">
+			<div class="min-w-0">
+				<h1 class="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">Pengguna &amp; Peran</h1>
+				<div class="mt-1.5 text-sm text-muted">
+					{ company.Name } · tiga peran:
+					<span class="num text-xs">owner</span> (kelola user &amp; peran),
+					<span class="num text-xs">admin</span> (kelola pembukuan),
+					<span class="num text-xs">staff</span> (input jurnal &amp; lihat laporan)
+				</div>
+			</div>
+		</div>
+		if errMsg != "" {
+			@errBox(errMsg)
+		}
+		<div class={ cardClass + " mt-8 px-5 py-5" }>
+			<div class="text-sm font-semibold text-ink">Identitas Laporan Keuangan</div>
+			<p class="mt-1 text-sm text-muted">
+				Dipakai sebagai kepala setiap laporan keuangan (PSAK 201 par. 49-53):
+				nama entitas, alamat, NPWP, jenis laporan, dan satuan pembulatan angka.
+			</p>
+			<form method="post" action={ companyPath(company.UrlKey, "/settings/profile") } class="mt-4 grid gap-4 sm:grid-cols-2">
+				<div>
+					<label class="mb-1.5 block text-sm font-medium text-ink" for="name">Nama entitas</label>
+					<input id="name" name="name" value={ company.Name } class={ inputClass }/>
+				</div>
+				<div>
+					<label class="mb-1.5 block text-sm font-medium text-ink" for="npwp">NPWP</label>
+					<input id="npwp" name="npwp" value={ company.Npwp } placeholder="00.000.000.0-000.000" class={ inputClass + " num" }/>
+				</div>
+				<div class="sm:col-span-2">
+					<label class="mb-1.5 block text-sm font-medium text-ink" for="address">Alamat</label>
+					<input id="address" name="address" value={ company.Address } placeholder="Jl. Contoh No. 1, Jakarta" class={ inputClass }/>
+				</div>
+				<div>
+					<label class="mb-1.5 block text-sm font-medium text-ink" for="entity_note">Catatan jenis laporan</label>
+					<input id="entity_note" name="entity_note" value={ company.EntityNote } placeholder="Laporan keuangan entitas tersendiri" class={ inputClass }/>
+				</div>
+				<div>
+					<label class="mb-1.5 block text-sm font-medium text-ink" for="rounding_unit">Pembulatan penyajian</label>
+					<select id="rounding_unit" name="rounding_unit" class={ inputClass }>
+						@roundingOptions(company.RoundingUnit)
+					</select>
+				</div>
+				<div class="sm:col-span-2">
+					<button type="submit" class={ btnPrimary }>Simpan identitas</button>
+				</div>
+			</form>
+		</div>
+		<div class={ cardClass + " mt-8" }>
+			<div class={ cardTitleClass }>Anggota Perusahaan</div>
+			<div class="overflow-x-auto">
+				<table class="w-full min-w-[720px] text-sm">
+					<thead>
+						<tr class="border-b border-line bg-panel/60">
+							<th class={ thClass }>Username</th>
+							<th class={ thClass }>Nama Lengkap</th>
+							<th class={ thClass }>Peran</th>
+							<th class={ thClass }>Aktivitas Terakhir</th>
+							<th class={ thClass + " text-center" }>Aksi</th>
+						</tr>
+					</thead>
+					<tbody class="divide-y divide-line">
+						for _, m := range members {
+							<tr class="transition-colors hover:bg-panel/60">
+								<td class="num px-5 py-3.5 font-medium text-ink">{ m.Username }</td>
+								<td class="px-5 py-3.5 text-label">{ m.FullName }</td>
+								<td class="px-5 py-3.5">
+									<form
+										method="post"
+										action={ companyPath(company.UrlKey, "/settings/users/role") }
+										class="flex items-center gap-2"
+									>
+										<input type="hidden" name="user_id" value={ strconv.FormatInt(m.UserID, 10) }/>
+										<select
+											name="role"
+											class={ inputClass + " w-28 py-1.5" }
+										>
+											@roleOptions(m.Role)
+										</select>
+										<button
+											type="submit"
+											class={ btnSecondary + " px-3 py-1 text-xs" }
+										>
+											Simpan
+										</button>
+									</form>
+								</td>
+								<td class="px-5 py-3.5 text-xs text-muted">
+									if m.LastActivityAt.Valid {
+										{ models.FormatTimeAgoID(m.LastActivityAt.Time, time.Now()) }
+									} else {
+										belum pernah
+									}
+								</td>
+								<td class="px-5 py-3.5 text-center">
+									<form
+										method="post"
+										action={ companyPath(company.UrlKey, "/settings/users/remove") }
+										onsubmit="return confirm('Cabut akses pengguna ini dari perusahaan?')"
+									>
+										<input type="hidden" name="user_id" value={ strconv.FormatInt(m.UserID, 10) }/>
+										<button type="submit" class={ btnGhost + " hover:bg-danger/10 hover:text-danger" }>
+											Cabut akses
+										</button>
+									</form>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+		</div>
+		<div class={ cardClass + " mt-6 px-5 py-5" }>
+			<div class="text-sm font-semibold text-ink">Menambah Pengguna</div>
+			<p class="mt-1 text-sm text-muted">
+				Pengguna baru ditambahkan lewat undangan di halaman
+				<a href={ companyPath(company.UrlKey, "/invitations") } class="font-medium text-accent hover:text-accent-hover hover:underline">Undangan</a>.
+				Akses diberikan sesuai peran terpilih, tautan hanya untuk orang yang dituju, dan berlaku 24 jam.
+			</p>
+		</div>
+	}
+}

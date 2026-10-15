@@ -1,0 +1,213 @@
+package templates
+
+// SignupValues adalah isian data diri yang dipertahankan antar langkah.
+type SignupValues struct {
+	FullName string
+	Username string
+	Email    string
+}
+
+// authShell adalah kerangka halaman standalone (login, undangan, PIN, error):
+// logo di atas, kartu dengan garis gradasi aksen. Body panjang lewat child
+// block; footerCat adalah teks kecil di bawah kartu (string, opsional).
+templ authShell(title string, sub string, footerCat string) {
+	<!DOCTYPE html>
+	<html lang="id">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title } · Akunting</title>
+			<link rel="stylesheet" href="/static/css/app.css"/>
+			<script src="/static/js/password.js" defer></script>
+		</head>
+		<body class="flex min-h-screen flex-col items-center justify-center bg-panel px-4 py-10 font-sans text-label">
+			<div class="w-full max-w-sm">
+				<div class="mb-7 flex flex-col items-center">
+					<span class="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-accent text-white shadow-btnHover">
+						<svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5L12 3l9 4.5M3 7.5v9L12 21l9-4.5v-9M3 7.5L12 12l9-4.5M12 12v9"/>
+						</svg>
+					</span>
+					<div class="text-xl font-semibold tracking-tight text-ink">Akunting</div>
+					if sub != "" {
+						<div class="mt-1 text-sm text-muted">{ sub }</div>
+					}
+				</div>
+				<div class="overflow-hidden rounded-card border border-line bg-white shadow-raised">
+					<div class="h-1 w-full bg-gradient-to-r from-accent via-accent-soft to-accent"></div>
+					<div class="px-6 pb-7 pt-7 sm:px-8">
+						{ children... }
+					</div>
+				</div>
+				if footerCat != "" {
+					<p class="mt-5 text-center text-xs text-muted">{ footerCat }</p>
+				}
+			</div>
+		</body>
+	</html>
+}
+
+// InviteAcceptPage langkah 1: dialog signup penerima undangan (publik).
+// Pemeriksa ketersediaan username, kekuatan password, dan kecocokan kedua
+// kolom password berjalan di sisi klien (static/js/password.js) dan diperiksa
+// ulang di server. Tombol lanjut nonaktif sampai seluruh isian lengkap.
+templ InviteAcceptPage(companyName string, role string, values SignupValues, errorMsg string) {
+	@authShell("Daftar via Undangan", "Pembukuan multi-perusahaan", "Langkah berikutnya: masukkan kode verifikasi dari pemberi undangan.") {
+		<h1 class="text-xl font-semibold tracking-tight text-ink">Daftar Akun</h1>
+		<div class="mb-6 mt-2 rounded-input border border-line bg-panel/60 px-4 py-3 text-sm text-label">
+			<div>
+				Undangan bergabung ke <span class="font-medium text-ink">{ companyName }</span>
+				sebagai <span class="font-medium text-accent">{ roleLabel(role) }</span>.
+			</div>
+			<div class="mt-1 text-muted">Lengkapi data diri Anda di bawah ini.</div>
+		</div>
+		if errorMsg != "" {
+			@errBox(errorMsg)
+		}
+		<form method="post" class="space-y-4" data-signup-form novalidate>
+			<input type="hidden" name="step" value="data"/>
+			<div>
+				<label class="mb-1.5 block text-sm font-medium text-ink" for="full_name">Nama Lengkap</label>
+				<input
+					id="full_name"
+					name="full_name"
+					required
+					maxlength="80"
+					autocomplete="name"
+					value={ values.FullName }
+					class={ inputClass }
+				/>
+			</div>
+			<div>
+				<label class="mb-1.5 block text-sm font-medium text-ink" for="username">Username</label>
+				<input
+					id="username"
+					name="username"
+					required
+					minlength="3"
+					maxlength="40"
+					autocomplete="username"
+					value={ values.Username }
+					class={ inputClass + " num" }
+				/>
+				<p class="mt-1.5 hidden text-xs" data-username-note></p>
+			</div>
+			<div>
+				<label class="mb-1.5 block text-sm font-medium text-ink" for="email">
+					Email <span class="font-normal text-muted">(opsional)</span>
+				</label>
+				<input
+					id="email"
+					name="email"
+					type="email"
+					maxlength="120"
+					autocomplete="email"
+					placeholder="nama@perusahaan.id"
+					value={ values.Email }
+					class={ inputClass }
+				/>
+				<p class="mt-1.5 hidden text-xs text-danger" data-email-note>Bentuk email belum benar.</p>
+			</div>
+			<div>
+				@passwordInput("password", "password", "Password", "new-password", true)
+				<div class="mt-3 rounded-input border border-line bg-panel/60 px-4 py-3" data-password-check>
+					<div class="flex items-center justify-between gap-2">
+						<span class="text-[11px] font-semibold uppercase tracking-wider text-muted">Kekuatan password</span>
+						<span class="text-xs font-semibold text-danger" data-password-label>Lemah</span>
+					</div>
+					<div class="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-line">
+						<div class="h-full w-[10%] rounded-full bg-danger transition-all duration-300" data-password-bar></div>
+					</div>
+					<ul class="mt-3 space-y-1 text-xs text-muted">
+						<li class="flex items-center gap-2" data-rule="length">
+							<span class="w-3 text-center" data-rule-mark>○</span> Minimal 8 karakter
+						</li>
+						<li class="flex items-center gap-2" data-rule="upper">
+							<span class="w-3 text-center" data-rule-mark>○</span> Memuat huruf kapital
+						</li>
+						<li class="flex items-center gap-2" data-rule="digit">
+							<span class="w-3 text-center" data-rule-mark>○</span> Memuat angka
+						</li>
+						<li class="flex items-center gap-2" data-rule="symbol">
+							<span class="w-3 text-center" data-rule-mark>○</span> Memuat simbol, misalnya ! @ # $ %
+						</li>
+					</ul>
+				</div>
+			</div>
+			<div>
+				@passwordInput("password2", "password2", "Ketik Ulang Password", "new-password", true)
+				<ul class="mt-3 space-y-1 text-xs text-muted" data-match-check>
+					<li class="flex items-center gap-2" data-rule="match">
+						<span class="w-3 text-center" data-rule-mark>○</span> Kedua password sama
+					</li>
+				</ul>
+			</div>
+			<button
+				type="submit"
+				data-submit
+				disabled
+				class={ btnPrimary + " mt-1 w-full py-2.5 disabled:cursor-not-allowed disabled:opacity-50" }
+			>
+				Lanjutkan
+			</button>
+		</form>
+	}
+}
+
+// InvitePinPage langkah 2: konfirmasi kode verifikasi (PIN). Data diri dan
+// password tidak lagi dikirim lewat kolom tersembunyi: server sudah menyimpan
+// draft pendaftaran dan perambah hanya membawa token draftnya.
+templ InvitePinPage(companyName string, role string, draftToken string, errorMsg string) {
+	@authShell("Kode Verifikasi", "Pembukuan multi-perusahaan", "PIN berlaku 5 menit sejak link dibuat. Minta owner membuat link baru bila sudah lewat.") {
+		<h1 class="text-xl font-semibold tracking-tight text-ink">Kode Verifikasi</h1>
+		<p class="mb-6 mt-2 text-sm text-muted">
+			Masukkan 6 digit angka dari pemberi undangan untuk
+			<span class="font-medium text-ink">{ companyName }</span>
+			sebagai <span class="font-medium text-accent">{ roleLabel(role) }</span>.
+		</p>
+		if errorMsg != "" {
+			@errBox(errorMsg)
+		}
+		<form method="post" class="space-y-4">
+			<input type="hidden" name="step" value="pin"/>
+			<input type="hidden" name="draft" value={ draftToken }/>
+			<div>
+				<label class="mb-1.5 block text-center text-sm font-medium text-ink" for="pin">Kode Verifikasi (PIN)</label>
+				<input
+					id="pin"
+					name="pin"
+					required
+					inputmode="numeric"
+					maxlength="6"
+					autocomplete="one-time-code"
+					placeholder="000000"
+					class={ inputClass + " num py-3 text-center text-lg font-semibold tracking-[0.5em]" }
+				/>
+				<p class="mt-1.5 text-center text-xs text-muted">Enam angka dari pemberi undangan, berlaku 5 menit.</p>
+			</div>
+			<button
+				type="submit"
+				class={ btnPrimary + " mt-1 w-full py-2.5" }
+			>
+				Verifikasi & Buat Akun
+			</button>
+		</form>
+	}
+}
+
+// InviteErrorPage menolak tautan undangan yang tidak sah (403).
+templ InviteErrorPage(msg string) {
+	@authShell("Undangan Tidak Sah", "Pembukuan multi-perusahaan", "") {
+		<div class="py-2 text-center">
+			<span class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-danger/10 text-danger">
+				<svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
+				</svg>
+			</span>
+			<p class="text-sm text-muted">{ msg }</p>
+			<a href="/login" class={ btnPrimary + " mt-6" }>
+				Ke Halaman Masuk
+			</a>
+		</div>
+	}
+}

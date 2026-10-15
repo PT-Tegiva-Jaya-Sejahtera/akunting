@@ -1,0 +1,220 @@
+package templates
+
+import (
+	"strconv"
+
+	"accounting/internal/database/db"
+	"accounting/internal/models"
+)
+
+// reportRow adalah baris tabel laporan dengan angka tabular dan pembulatan
+// sesuai satuan penyajian entitas.
+templ reportRow(view models.ReportView, line models.ReportLine) {
+	<tr class="transition-colors hover:bg-panel/60">
+		<td class="px-5 py-2">
+			<span class="num text-xs text-muted">{ line.Code }</span>
+			<span class="text-label">{ line.Name }</span>
+		</td>
+		<td class="num px-5 py-2 text-right text-ink">{ view.Money(line.AmountCents) }</td>
+	</tr>
+}
+
+// psakHeader adalah baris judul bagian pada laporan.
+templ psakHeader(label string) {
+	<tr class="border-y border-line bg-panel/80">
+		<td class="px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted" colspan="2">{ label }</td>
+	</tr>
+}
+
+// psakSubtotal adalah baris subtotal bagian.
+templ psakSubtotal(view models.ReportView, label string, amount int64) {
+	<tr class="border-t border-line bg-panel/40">
+		<td class="px-5 py-2.5 font-medium text-ink">{ label }</td>
+		<td class="num px-5 py-2.5 text-right font-semibold text-ink">{ view.Money(amount) }</td>
+	</tr>
+}
+
+// reportIdentity adalah kepala laporan menurut PSAK 201 par. 49-53: nama
+// entitas, jenis laporan, periode penyajian, mata uang, dan pembulatan.
+templ reportIdentity(view models.ReportView, reportTitle string, periodText string) {
+	<div class="border-b border-line px-5 py-4">
+		<div class="text-sm font-semibold text-ink">{ view.CompanyName }</div>
+		if view.CompanyAddr != "" {
+			<div class="mt-0.5 text-xs text-muted">{ view.CompanyAddr }</div>
+		}
+		if view.CompanyNpwp != "" {
+			<div class="mt-0.5 text-xs text-muted">NPWP <span class="num">{ view.CompanyNpwp }</span></div>
+		}
+		<div class="mt-2 text-sm font-semibold text-ink">{ reportTitle }</div>
+		<div class="mt-0.5 text-xs text-muted">{ periodText }</div>
+		if view.EntityNote != "" {
+			<div class="mt-0.5 text-xs text-muted">{ view.EntityNote }</div>
+		}
+		<div class="mt-0.5 text-xs text-muted">{ view.RoundingLabel }</div>
+	</div>
+}
+
+// reportTitleFor menerjemahkan mode halaman menjadi judul halaman.
+func reportTitleFor(mode string) string {
+	switch mode {
+	case "pl":
+		return "Laporan Laba Rugi"
+	case "bs":
+		return "Neraca"
+	default:
+		return "Laporan Keuangan"
+	}
+}
+
+// reportDescFor adalah keterangan kepala halaman per mode.
+func reportDescFor(mode string) string {
+	switch mode {
+	case "pl":
+		return "Kinerja perusahaan pada periode terpilih. Disusun menurut PSAK 201 par. 82."
+	case "bs":
+		return "Posisi aset, liabilitas, dan ekuitas pada akhir periode. Disusun menurut PSAK 201 par. 54-76."
+	default:
+		return "Laporan laba rugi dan laporan posisi keuangan menurut PSAK 201 (dulu PSAK 1)."
+	}
+}
+
+// reportGridClass memberi lebar kartu: dua kolom saat kedua laporan tampil,
+// satu kolom penuh saat hanya satu laporan disajikan.
+func reportGridClass(mode string) string {
+	if mode == "pl" || mode == "bs" {
+		return "mt-8 grid gap-6"
+	}
+	return "mt-8 grid gap-6 xl:grid-cols-2"
+}
+
+// ReportsPage menampilkan laporan keuangan PSAK 201. Mode "pl" hanya laba rugi,
+// mode "bs" hanya laporan posisi keuangan (neraca), mode lain keduanya.
+templ ReportsPage(shell Shell, company db.Company, view models.ReportView) {
+	@Layout(shell) {
+		@pageHeader(reportTitleFor(view.Mode), reportDescFor(view.Mode)) {
+			<a href={ periodsPath(company.ID) } class={ btnSecondary }>Periode &amp; Tutup Buku</a>
+		}
+		<form method="get" class={ cardClass + " mt-6 flex flex-wrap items-end gap-4 px-5 py-4" }>
+			<div>
+				<label class="mb-1.5 block text-sm font-medium text-ink" for="period">Periode akuntansi</label>
+				<select id="period" name="period" class={ inputClass + " w-56" }>
+					<option value="">Periode terbaru</option>
+					for _, p := range view.Periods {
+						<option value={ strconv.FormatInt(p.ID, 10) } selected?={ p.ID == view.SelectedPeriodID }>
+							{ p.Name } · { p.StatusLabel }
+						</option>
+					}
+				</select>
+			</div>
+			<div class="w-44">
+				@dateField("from", "from", "Dari tanggal", view.DateFrom)
+			</div>
+			<div class="w-44">
+				@dateField("to", "to", "Sampai tanggal", view.DateTo)
+			</div>
+			<button type="submit" class={ btnPrimary }>Tampilkan</button>
+		</form>
+		<div class={ reportGridClass(view.Mode) }>
+			if view.Mode != "bs" {
+				<div class={ cardClass }>
+					@reportIdentity(view, "Laporan Laba Rugi", "Untuk periode "+view.PeriodName)
+					<table class="w-full text-sm">
+						<tbody class="divide-y divide-line/50">
+							@psakHeader("Pendapatan")
+							for _, line := range view.Revenue {
+								@reportRow(view, line)
+							}
+							@psakSubtotal(view, "Jumlah Pendapatan", view.TotalRevenue)
+							@psakHeader("Beban")
+							for _, line := range view.Expense {
+								@reportRow(view, line)
+							}
+							@psakSubtotal(view, "Jumlah Beban", view.TotalExpense)
+						</tbody>
+						<tfoot>
+							<tr class="border-t-2 border-line bg-accent-wash">
+								<td class="px-5 py-3.5 font-semibold text-ink">Laba (Rugi) Periode Berjalan</td>
+								<td class="num px-5 py-3.5 text-right font-semibold text-ink">{ view.Money(view.NetIncome) }</td>
+							</tr>
+						</tfoot>
+					</table>
+					<div class="border-t border-line px-5 py-3 text-xs text-muted">
+						Bagian penghasilan komprehensif lain (par. 82A) dan kolom pembanding periode sebelumnya
+						(par. 38) belum disajikan, masih dalam antrean batch berikutnya.
+					</div>
+				</div>
+			}
+			if view.Mode != "pl" {
+				<div class={ cardClass }>
+					@reportIdentity(view, "Laporan Posisi Keuangan", "Per "+view.DateToLabel)
+					<table class="w-full text-sm">
+						<tbody class="divide-y divide-line/50">
+							@psakHeader("Aset Lancar")
+							for _, line := range view.CurrentAssets {
+								@reportRow(view, line)
+							}
+							@psakSubtotal(view, "Jumlah Aset Lancar", view.TotalCurrentAssets)
+							@psakHeader("Aset Tidak Lancar")
+							for _, line := range view.NonCurrentAssets {
+								@reportRow(view, line)
+							}
+							@psakSubtotal(view, "Jumlah Aset Tidak Lancar", view.TotalNonCurrentAssets)
+							@psakSubtotal(view, "Jumlah Aset", view.TotalAssets)
+							@psakHeader("Liabilitas Jangka Pendek")
+							for _, line := range view.CurrentLiabilities {
+								@reportRow(view, line)
+							}
+							@psakSubtotal(view, "Jumlah Liabilitas Jangka Pendek", view.TotalCurrentLiabilities)
+							@psakHeader("Liabilitas Jangka Panjang")
+							for _, line := range view.NonCurrentLiabilities {
+								@reportRow(view, line)
+							}
+							@psakSubtotal(view, "Jumlah Liabilitas Jangka Panjang", view.TotalNonCurrentLiabilities)
+							@psakSubtotal(view, "Jumlah Liabilitas", view.TotalLiabilities)
+							@psakHeader("Ekuitas")
+							for _, line := range view.Equity {
+								@reportRow(view, line)
+							}
+							if view.UnclosedProfit != 0 {
+								<tr class="transition-colors hover:bg-panel/60">
+									<td class="px-5 py-2 text-label">Laba (Rugi) Periode Belum Ditutup</td>
+									<td class="num px-5 py-2 text-right text-ink">{ view.Money(view.UnclosedProfit) }</td>
+								</tr>
+							}
+							@psakSubtotal(view, "Jumlah Ekuitas", view.TotalEquity+view.UnclosedProfit)
+						</tbody>
+						<tfoot>
+							<tr class="border-t-2 border-line bg-accent-wash">
+								<td class="px-5 py-3.5 font-semibold text-ink">Jumlah Liabilitas dan Ekuitas</td>
+								<td class="num px-5 py-3.5 text-right font-semibold text-ink">{ view.Money(view.TotalLiabEquity) }</td>
+							</tr>
+							<tr class="border-t border-line bg-panel/40">
+								<td class="px-5 py-3 text-sm font-medium text-ink">Keseimbangan (A = L + E)</td>
+								<td class="px-5 py-3 text-right text-sm">
+									if view.TotalAssets == view.TotalLiabEquity {
+										<span class="inline-flex items-center gap-1.5 rounded-input bg-ok/10 px-2.5 py-1 text-xs font-medium text-ok">
+											<svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+												<path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/>
+											</svg>
+											Berimbang
+										</span>
+									} else {
+										<span class="text-muted">
+											Selisih <span class="num font-medium">{ view.Money(view.TotalAssets - view.TotalLiabEquity) }</span>
+										</span>
+									}
+								</td>
+							</tr>
+						</tfoot>
+					</table>
+				</div>
+			}
+		</div>
+		<p class="mt-6 text-xs leading-relaxed text-muted">
+			Rujukan: PSAK 201 par. 49-53 identitas laporan, par. 54 pos minimum laporan posisi keuangan,
+			par. 60-76 klasifikasi lancar dan tidak lancar, par. 82 pos minimum laba rugi, par. 106-110
+			perubahan ekuitas, par. 112-138 catatan atas laporan keuangan. Klasifikasi tiap akun diatur
+			lewat menu Buku Besar (Kelola Akun); satuan pembulatan angka diatur lewat menu Pengaturan.
+		</p>
+	}
+}

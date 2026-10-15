@@ -1,0 +1,148 @@
+package templates
+
+import (
+	"accounting/internal/database/db"
+	"accounting/internal/models"
+)
+
+// LedgerPage adalah Buku Besar: seluruh akun beserta mutasi dan saldo pada
+// periode terpilih, dengan pilihan melihat mutasi satu akun.
+templ LedgerPage(shell Shell, company db.Company, view models.LedgerView) {
+	@Layout(shell) {
+		@pageHeader("Buku Besar", company.Name+" · "+view.PeriodName+" ("+view.PeriodStatus+") · "+view.DateFromISO+" s.d. "+view.DateToISO) {
+			<a href={ companyPath(company.UrlKey, "/accounts") } class={ btnSecondary }>Kelola Akun</a>
+			<a href={ companyPath(company.UrlKey, "/journals/new") } class={ btnPrimary }>Jurnal Umum Baru</a>
+		}
+		<form method="get" class={ cardClass + " mt-6 flex flex-wrap items-end gap-4 px-5 py-4" }>
+			<div>
+				<label class="mb-1.5 block text-sm font-medium text-ink" for="period">Periode akuntansi</label>
+				<select id="period" name="period" class={ inputClass + " w-56" }>
+					<option value="">Periode terbaru</option>
+					for _, p := range view.Periods {
+						<option value={ models.FormatThousands(p.ID) } selected?={ p.ID == view.SelectedPeriodID }>
+							{ p.Name } · { p.StatusLabel }
+						</option>
+					}
+				</select>
+			</div>
+			<button type="submit" class={ btnPrimary }>Tampilkan</button>
+		</form>
+
+		if view.Account != nil {
+			<div class={ cardClass + " mt-6" }>
+				<div class={ cardTitleClass }>
+					<div class="flex flex-wrap items-center justify-between gap-3">
+						<span>Mutasi akun <span class="num">{ view.Account.Code }</span> { view.Account.Name }</span>
+						<a href={ companyPath(company.UrlKey, "/ledger") } class="text-xs font-medium text-accent hover:text-accent-hover hover:underline">Tutup mutasi akun</a>
+					</div>
+				</div>
+				<div class="overflow-x-auto">
+					<table class="w-full min-w-[880px] text-sm">
+						<thead>
+							<tr class="border-b border-line bg-panel/60">
+								<th class={ thClass }>Tanggal</th>
+								<th class={ thClass }>Referensi</th>
+								<th class={ thClass }>Keterangan</th>
+								<th class={ thClass + " text-right" }>Debit</th>
+								<th class={ thClass + " text-right" }>Kredit</th>
+								<th class={ thClass + " text-right" }>Saldo</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-line">
+							for _, m := range view.Movements {
+								<tr class="transition-colors hover:bg-panel/60">
+									<td class="num px-5 py-2.5 text-xs text-muted">{ m.DateLabel }</td>
+									<td class="num px-5 py-2.5 text-label">{ m.Reference }</td>
+									<td class="px-5 py-2.5 text-label">{ m.Description }</td>
+									<td class="num px-5 py-2.5 text-right text-ink">
+										if m.Debit != 0 {
+											{ view.Money(m.Debit) }
+										}
+									</td>
+									<td class="num px-5 py-2.5 text-right text-ink">
+										if m.Credit != 0 {
+											{ view.Money(m.Credit) }
+										}
+									</td>
+									<td class="num px-5 py-2.5 text-right font-medium text-ink">{ view.Money(m.Balance) }</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			</div>
+		}
+
+		<div class={ cardClass + " mt-6" }>
+			<div class={ cardTitleClass }>
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<span>Akun dan Saldo Periode</span>
+					<span class="text-xs font-normal text-muted">{ view.RoundingLabel }</span>
+				</div>
+			</div>
+			if len(view.Rows) == 0 {
+				@emptyState("M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zM4.125 6.75a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z", "Belum ada mutasi pada periode ini", "Buku besar terisi setelah ada jurnal umum atau jurnal penyesuaian.") {
+				}
+			} else {
+				<div class="overflow-x-auto">
+					<table class="w-full min-w-[1020px] text-sm">
+						<thead>
+							<tr class="border-b border-line bg-panel/60">
+								<th class={ thClass }>Kode</th>
+								<th class={ thClass }>Nama Akun</th>
+								<th class={ thClass }>Klasifikasi</th>
+								<th class={ thClass + " text-right" }>Saldo Awal</th>
+								<th class={ thClass + " text-right" }>Debit</th>
+								<th class={ thClass + " text-right" }>Kredit</th>
+								<th class={ thClass + " text-right" }>Saldo Akhir</th>
+								<th class={ thClass + " text-center" }>Mutasi</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-line">
+							for _, row := range view.Rows {
+								<tr class="transition-colors hover:bg-panel/60">
+									<td class="num px-5 py-2.5 text-xs text-muted">{ row.Code }</td>
+									<td class="px-5 py-2.5 font-medium text-ink">{ row.Name }</td>
+									<td class="px-5 py-2.5 text-xs text-muted">{ row.SubLabel }</td>
+									<td class="num px-5 py-2.5 text-right text-muted">{ view.Money(row.Opening) }</td>
+									<td class="num px-5 py-2.5 text-right text-ink">
+										if row.Debit != 0 {
+											{ view.Money(row.Debit) }
+										}
+									</td>
+									<td class="num px-5 py-2.5 text-right text-ink">
+										if row.Credit != 0 {
+											{ view.Money(row.Credit) }
+										}
+									</td>
+									<td class="num px-5 py-2.5 text-right font-medium text-ink">{ view.Money(row.Balance) }</td>
+									<td class="px-5 py-2.5 text-center">
+										<a
+											href={ companyPath(company.UrlKey, "/ledger?account="+models.FormatThousands(row.AccountID)) }
+											class={ btnGhost }
+										>
+											Lihat
+										</a>
+									</td>
+								</tr>
+							}
+						</tbody>
+						<tfoot>
+							<tr class="border-t-2 border-line bg-accent-wash">
+								<td class="px-5 py-3 font-semibold text-ink" colspan="4">Jumlah mutasi periode</td>
+								<td class="num px-5 py-3 text-right font-semibold text-ink">{ view.Money(view.TotalDebit) }</td>
+								<td class="num px-5 py-3 text-right font-semibold text-ink">{ view.Money(view.TotalCredit) }</td>
+								<td class="px-5 py-3"></td>
+								<td class="px-5 py-3"></td>
+							</tr>
+						</tfoot>
+					</table>
+				</div>
+			}
+		</div>
+		<p class="mt-6 text-xs leading-relaxed text-muted">
+			Buku besar menampilkan mutasi per akun dari jurnal umum dan jurnal penyesuaian pada periode terpilih.
+			Daftar akun dan peran sistemnya diatur lewat tombol Kelola Akun.
+		</p>
+	}
+}
