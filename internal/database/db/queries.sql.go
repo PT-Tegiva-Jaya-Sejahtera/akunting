@@ -80,7 +80,7 @@ const createAccount = `-- name: CreateAccount :one
 
 INSERT INTO accounts (company_id, code, name, account_type, sub_type, normal_balance, system_role, psak_line)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line, is_receivable
+RETURNING id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line, is_receivable, is_payable
 `
 
 type CreateAccountParams struct {
@@ -122,6 +122,7 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.SystemRole,
 		&i.PsakLine,
 		&i.IsReceivable,
+		&i.IsPayable,
 	)
 	return i, err
 }
@@ -752,7 +753,7 @@ func (q *Queries) ExportJournalLines(ctx context.Context, arg ExportJournalLines
 }
 
 const getAccountBySystemRole = `-- name: GetAccountBySystemRole :one
-SELECT id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line, is_receivable
+SELECT id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line, is_receivable, is_payable
 FROM accounts
 WHERE company_id = $1 AND system_role = $2
 `
@@ -778,6 +779,7 @@ func (q *Queries) GetAccountBySystemRole(ctx context.Context, arg GetAccountBySy
 		&i.SystemRole,
 		&i.PsakLine,
 		&i.IsReceivable,
+		&i.IsPayable,
 	)
 	return i, err
 }
@@ -1878,7 +1880,7 @@ func (q *Queries) ListAccountTotalsOpening(ctx context.Context, arg ListAccountT
 }
 
 const listAccounts = `-- name: ListAccounts :many
-SELECT id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line, is_receivable
+SELECT id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line, is_receivable, is_payable
 FROM accounts
 WHERE company_id = $1 AND is_active = TRUE
 ORDER BY code
@@ -1906,6 +1908,7 @@ func (q *Queries) ListAccounts(ctx context.Context, companyID int64) ([]Account,
 			&i.SystemRole,
 			&i.PsakLine,
 			&i.IsReceivable,
+			&i.IsPayable,
 		); err != nil {
 			return nil, err
 		}
@@ -1918,7 +1921,7 @@ func (q *Queries) ListAccounts(ctx context.Context, companyID int64) ([]Account,
 }
 
 const listAccountsAll = `-- name: ListAccountsAll :many
-SELECT id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line, is_receivable
+SELECT id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line, is_receivable, is_payable
 FROM accounts
 WHERE company_id = $1
 ORDER BY code
@@ -1946,6 +1949,7 @@ func (q *Queries) ListAccountsAll(ctx context.Context, companyID int64) ([]Accou
 			&i.SystemRole,
 			&i.PsakLine,
 			&i.IsReceivable,
+			&i.IsPayable,
 		); err != nil {
 			return nil, err
 		}
@@ -2358,6 +2362,83 @@ func (q *Queries) ListJournals(ctx context.Context, arg ListJournalsParams) ([]J
 			&i.IsAdjusting,
 			&i.PartyID,
 			&i.DueDate,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPayableMovements = `-- name: ListPayableMovements :many
+
+SELECT
+    j.id AS journal_id,
+    COALESCE(j.party_id, 0) AS party_id,
+    COALESCE(p.name, '') AS party_name,
+    j.reference,
+    j.journal_date,
+    j.due_date,
+    COALESCE(SUM(le.debit), 0)::NUMERIC(20, 2) AS total_debit,
+    COALESCE(SUM(le.credit), 0)::NUMERIC(20, 2) AS total_credit
+FROM journals j
+JOIN ledger_entries le ON le.journal_id = j.id AND le.company_id = j.company_id
+JOIN accounts a ON a.id = le.account_id AND a.company_id = le.company_id
+LEFT JOIN parties p ON p.id = j.party_id AND p.company_id = j.company_id
+WHERE j.company_id = $1
+  AND j.status = 'posted'
+  AND j.journal_date <= $2
+  AND a.is_payable
+GROUP BY j.id, j.party_id, p.name, j.reference, j.journal_date, j.due_date
+ORDER BY j.journal_date, j.id
+`
+
+type ListPayableMovementsParams struct {
+	CompanyID int64
+	AsOf      pgtype.Date
+}
+
+type ListPayableMovementsRow struct {
+	JournalID   int64
+	PartyID     int64
+	PartyName   string
+	Reference   string
+	JournalDate pgtype.Date
+	DueDate     pgtype.Date
+	TotalDebit  pgtype.Numeric
+	TotalCredit pgtype.Numeric
+}
+
+// ============================================================
+// Subledger hutang usaha (Stage 3b)
+// ============================================================
+// Mutasi hutang per jurnal sampai tanggal laporan: dasar open item untuk
+// aging. Hanya akun bertanda is_payable dan jurnal posted yang dihitung.
+// Arah mutasi dibalik dari piutang (kredit - debit): positif = tagihan
+// supplier, negatif = pembayaran. Jurnal tanpa pihak tetap disertakan
+// (party_id 0) supaya jumlah subledger selalu sama dengan saldo akun
+// hutang usaha pada buku besar.
+func (q *Queries) ListPayableMovements(ctx context.Context, arg ListPayableMovementsParams) ([]ListPayableMovementsRow, error) {
+	rows, err := q.db.Query(ctx, listPayableMovements, arg.CompanyID, arg.AsOf)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPayableMovementsRow{}
+	for rows.Next() {
+		var i ListPayableMovementsRow
+		if err := rows.Scan(
+			&i.JournalID,
+			&i.PartyID,
+			&i.PartyName,
+			&i.Reference,
+			&i.JournalDate,
+			&i.DueDate,
+			&i.TotalDebit,
+			&i.TotalCredit,
 		); err != nil {
 			return nil, err
 		}

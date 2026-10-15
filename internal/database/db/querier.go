@@ -122,6 +122,16 @@ type Querier interface {
 	ListJournalKeys(ctx context.Context, companyID int64) ([]ListJournalKeysRow, error)
 	ListJournals(ctx context.Context, arg ListJournalsParams) ([]Journal, error)
 	// ============================================================
+	// Subledger hutang usaha (Stage 3b)
+	// ============================================================
+	// Mutasi hutang per jurnal sampai tanggal laporan: dasar open item untuk
+	// aging. Hanya akun bertanda is_payable dan jurnal posted yang dihitung.
+	// Arah mutasi dibalik dari piutang (kredit - debit): positif = tagihan
+	// supplier, negatif = pembayaran. Jurnal tanpa pihak tetap disertakan
+	// (party_id 0) supaya jumlah subledger selalu sama dengan saldo akun
+	// hutang usaha pada buku besar.
+	ListPayableMovements(ctx context.Context, arg ListPayableMovementsParams) ([]ListPayableMovementsRow, error)
+	// ============================================================
 	// Subledger piutang usaha (Stage 3a)
 	// ============================================================
 	// Mutasi piutang per jurnal sampai tanggal laporan: dasar open item untuk

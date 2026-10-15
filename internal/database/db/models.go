@@ -409,6 +409,7 @@ type Account struct {
 	SystemRole    string
 	PsakLine      string
 	IsReceivable  bool
+	IsPayable     bool
 }
 
 type Company struct {

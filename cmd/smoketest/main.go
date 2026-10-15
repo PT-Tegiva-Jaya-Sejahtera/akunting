@@ -230,6 +230,9 @@ func main() {
 	// 10. Bukti subledger piutang usaha + aging (Stage 3a).
 	evidenceReceivables(ctx, pool, q, userID)
 
+	// 11. Bukti subledger hutang usaha + aging (Stage 3b).
+	evidencePayables(ctx, pool, q, userID)
+
 	fmt.Println("SEMUA SMOKE TEST LULUS")
 }
 

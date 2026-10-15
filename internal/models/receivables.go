@@ -82,6 +82,13 @@ type openItem struct {
 // dicatat negatif di kolom NotDue agar jumlah baris tetap sama dengan saldo
 // piutang di buku besar.
 func BuildReceivableAging(items []ReceivableItem, asOf time.Time) ReceivableAging {
+	return buildAging(items, asOf, PartyNameTanpaPihak)
+}
+
+// buildAging adalah mesin aging bersama subledger piutang dan hutang usaha.
+// Nama baris untuk jurnal tanpa pihak dikirim pemanggil (pelanggan vs
+// supplier); algoritma selebihnya identik untuk kedua subledger.
+func buildAging(items []ReceivableItem, asOf time.Time, tanpaPihak string) ReceivableAging {
 	asOf = dateOnly(asOf)
 
 	type group struct {
@@ -96,7 +103,7 @@ func BuildReceivableAging(items []ReceivableItem, asOf time.Time) ReceivableAgin
 		if !ok {
 			name := it.PartyName
 			if it.PartyID == PartyIDTanpaPihak || name == "" {
-				name = PartyNameTanpaPihak
+				name = tanpaPihak
 			}
 			g = &group{partyID: it.PartyID, partyName: name}
 			groups[it.PartyID] = g

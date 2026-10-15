@@ -776,3 +776,34 @@ WHERE j.company_id = @company_id
   AND a.is_receivable
 GROUP BY j.id, j.party_id, p.name, j.reference, j.journal_date, j.due_date
 ORDER BY j.journal_date, j.id;
+
+-- ============================================================
+-- Subledger hutang usaha (Stage 3b)
+-- ============================================================
+
+-- Mutasi hutang per jurnal sampai tanggal laporan: dasar open item untuk
+-- aging. Hanya akun bertanda is_payable dan jurnal posted yang dihitung.
+-- Arah mutasi dibalik dari piutang (kredit - debit): positif = tagihan
+-- supplier, negatif = pembayaran. Jurnal tanpa pihak tetap disertakan
+-- (party_id 0) supaya jumlah subledger selalu sama dengan saldo akun
+-- hutang usaha pada buku besar.
+-- name: ListPayableMovements :many
+SELECT
+    j.id AS journal_id,
+    COALESCE(j.party_id, 0) AS party_id,
+    COALESCE(p.name, '') AS party_name,
+    j.reference,
+    j.journal_date,
+    j.due_date,
+    COALESCE(SUM(le.debit), 0)::NUMERIC(20, 2) AS total_debit,
+    COALESCE(SUM(le.credit), 0)::NUMERIC(20, 2) AS total_credit
+FROM journals j
+JOIN ledger_entries le ON le.journal_id = j.id AND le.company_id = j.company_id
+JOIN accounts a ON a.id = le.account_id AND a.company_id = le.company_id
+LEFT JOIN parties p ON p.id = j.party_id AND p.company_id = j.company_id
+WHERE j.company_id = @company_id
+  AND j.status = 'posted'
+  AND j.journal_date <= @as_of
+  AND a.is_payable
+GROUP BY j.id, j.party_id, p.name, j.reference, j.journal_date, j.due_date
+ORDER BY j.journal_date, j.id;
