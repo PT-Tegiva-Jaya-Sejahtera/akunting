@@ -15,6 +15,16 @@ templ receivableCell(view models.ReceivablesView, amount int64) {
 	</td>
 }
 
+// receivableFootCell merender satu sel angka tfoot baris Jumlah (kosong bila
+// nol) supaya formatnya konsisten dengan sel baris body di atasnya.
+templ receivableFootCell(view models.ReceivablesView, amount int64) {
+	<td class="num px-5 py-2.5 text-right font-semibold text-ink">
+		if amount != 0 {
+			{ view.Money(amount) }
+		}
+	</td>
+}
+
 // ReceivablesPage adalah subledger piutang usaha: saldo terbuka per pelanggan
 // dengan kolom aging, dihitung dari tanggal jatuh tempo vs tanggal laporan.
 templ ReceivablesPage(shell Shell, company db.Company, view models.ReceivablesView) {
@@ -67,11 +77,11 @@ templ ReceivablesPage(shell Shell, company db.Company, view models.ReceivablesVi
 						<tfoot>
 							<tr class="border-t-2 border-line bg-panel/60">
 								<td class="px-5 py-2.5 text-sm font-semibold text-ink">Jumlah Piutang</td>
-								<td class="num px-5 py-2.5 text-right font-semibold text-ink">{ view.Money(view.Total.NotDue) }</td>
-								<td class="num px-5 py-2.5 text-right font-semibold text-ink">{ view.Money(view.Total.Days030) }</td>
-								<td class="num px-5 py-2.5 text-right font-semibold text-ink">{ view.Money(view.Total.Days3160) }</td>
-								<td class="num px-5 py-2.5 text-right font-semibold text-ink">{ view.Money(view.Total.Days6190) }</td>
-								<td class="num px-5 py-2.5 text-right font-semibold text-ink">{ view.Money(view.Total.Days90Plus) }</td>
+								@receivableFootCell(view, view.Total.NotDue)
+								@receivableFootCell(view, view.Total.Days030)
+								@receivableFootCell(view, view.Total.Days3160)
+								@receivableFootCell(view, view.Total.Days6190)
+								@receivableFootCell(view, view.Total.Days90Plus)
 								<td class="num px-5 py-2.5 text-right font-semibold text-ink">{ view.Money(view.Total.Total) }</td>
 							</tr>
 						</tfoot>
