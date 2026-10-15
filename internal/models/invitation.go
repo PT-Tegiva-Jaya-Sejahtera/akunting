@@ -25,7 +25,7 @@ type NewInviteResult struct {
 	PIN  string
 }
 
-// Sub-type akun (klasifikasi PSAK 1) beserta labelnya.
+// Sub-type akun (klasifikasi PSAK 201) beserta labelnya.
 const (
 	SubCurrentAsset     = "aset_lancar"
 	SubNonCurrentAsset  = "aset_tidak_lancar"

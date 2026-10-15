@@ -30,15 +30,17 @@ type JournalForm struct {
 	Error       string
 }
 
-// ReportLine adalah satu baris laporan keuangan.
+// ReportLine adalah satu baris laporan keuangan. AmountCents adalah periode
+// berjalan; PriorAmountCents adalah periode pembanding (PSAK 201 par. 38).
 type ReportLine struct {
-	Code        string
-	Name        string
-	AmountCents int64
+	Code             string
+	Name             string
+	AmountCents      int64
+	PriorAmountCents int64
 }
 
 // ReportView adalah data lengkap halaman laporan (laba rugi + neraca),
-// dikelompokkan mengikuti klasifikasi PSAK 1.
+// dikelompokkan mengikuti klasifikasi PSAK 201.
 type ReportView struct {
 	DateFrom string
 	DateTo   string
@@ -62,11 +64,34 @@ type ReportView struct {
 	// Mode halaman laporan: "" keduanya, "pl" hanya laba rugi, "bs" hanya neraca.
 	Mode string
 
-	Revenue      []ReportLine
-	TotalRevenue int64
-	Expense      []ReportLine
-	TotalExpense int64
-	NetIncome    int64 // laba periode berjalan = pendapatan - beban
+	// Kolom pembanding (PSAK 201 par. 38). PriorPeriodName menjadi kepala
+	// kolom kedua; HasComparative false berarti periode pembanding tidak ada.
+	HasComparative  bool
+	PriorPeriodName string
+	ComparePeriodID int64
+
+	// Laporan Laba Rugi (PSAK 201 par. 82): biaya keuangan dan beban pajak
+	// disajikan sebagai baris tersendiri, bukan dicampur ke beban lain-lain.
+	Revenue               []ReportLine
+	TotalRevenue          int64
+	OperatingExpense      []ReportLine // beban menurut sifat (par. 99-105)
+	TotalOperatingExpense int64
+	OperatingProfit       int64        // pendapatan - beban operasional
+	FinanceCost           []ReportLine // biaya keuangan (par. 82 huruf b)
+	TotalFinanceCost      int64
+	ProfitBeforeTax       int64
+	TaxExpense            []ReportLine // beban pajak (par. 82 huruf d)
+	TotalTaxExpense       int64
+	NetIncome             int64 // laba periode berjalan
+
+	// Kolom pembanding untuk total laba rugi.
+	PriorTotalRevenue          int64
+	PriorTotalOperatingExpense int64
+	PriorOperatingProfit       int64
+	PriorTotalFinanceCost      int64
+	PriorProfitBeforeTax       int64
+	PriorTotalTaxExpense       int64
+	PriorNetIncome             int64
 
 	CurrentAssets              []ReportLine
 	TotalCurrentAssets         int64
@@ -82,11 +107,40 @@ type ReportView struct {
 	TotalEquity                int64
 	UnclosedProfit             int64 // laba (rugi) periode yang belum ditutup
 	TotalLiabEquity            int64 // liabilitas + ekuitas + laba belum ditutup
+
+	// Kolom pembanding untuk total laporan posisi keuangan.
+	PriorTotalCurrentAssets         int64
+	PriorTotalNonCurrentAssets      int64
+	PriorTotalAssets                int64
+	PriorTotalCurrentLiabilities    int64
+	PriorTotalNonCurrentLiabilities int64
+	PriorTotalLiabilities           int64
+	PriorTotalEquity                int64
+	PriorUnclosedProfit             int64
+	PriorTotalLiabEquity            int64
 }
 
 // Money menampilkan nilai sen memakai satuan pembulatan entitas.
 func (v ReportView) Money(cents int64) string {
 	return FormatRounded(cents, v.RoundingUnit)
+}
+
+// PriorMoney menampilkan nilai kolom pembanding; tanda "-" bila laporan tidak
+// memiliki periode pembanding (mis. periode pertama entitas).
+func (v ReportView) PriorMoney(cents int64) string {
+	if !v.HasComparative {
+		return "-"
+	}
+	return FormatRounded(cents, v.RoundingUnit)
+}
+
+// ConsolidationLabel menerjemahkan catatan jenis laporan menjadi pernyataan
+// terpisah vs konsolidasi yang wajib disebut (PSAK 201 par. 49 huruf b).
+func (v ReportView) ConsolidationLabel() string {
+	if strings.TrimSpace(v.EntityNote) != "" {
+		return v.EntityNote
+	}
+	return "Laporan keuangan entitas tersendiri (terpisah, bukan konsolidasi)"
 }
 
 // ErrMoneyFormat dipakai ParseMoney untuk input yang tidak valid.

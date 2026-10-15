@@ -7,8 +7,8 @@ import (
 	"accounting/internal/models"
 )
 
-// reportRow adalah baris tabel laporan dengan angka tabular dan pembulatan
-// sesuai satuan penyajian entitas.
+// reportRow adalah baris tabel laporan dengan dua kolom angka: periode
+// berjalan dan periode pembanding (PSAK 201 par. 38), rata kanan tabular.
 templ reportRow(view models.ReportView, line models.ReportLine) {
 	<tr class="transition-colors hover:bg-panel/60">
 		<td class="px-5 py-2">
@@ -16,26 +16,66 @@ templ reportRow(view models.ReportView, line models.ReportLine) {
 			<span class="text-label">{ line.Name }</span>
 		</td>
 		<td class="num px-5 py-2 text-right text-ink">{ view.Money(line.AmountCents) }</td>
+		<td class="num px-5 py-2 text-right text-muted">{ view.PriorMoney(line.PriorAmountCents) }</td>
 	</tr>
 }
 
 // psakHeader adalah baris judul bagian pada laporan.
 templ psakHeader(label string) {
 	<tr class="border-y border-line bg-panel/80">
-		<td class="px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted" colspan="2">{ label }</td>
+		<td class="px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted" colspan="3">{ label }</td>
 	</tr>
 }
 
-// psakSubtotal adalah baris subtotal bagian.
-templ psakSubtotal(view models.ReportView, label string, amount int64) {
+// psakSubtotal adalah baris subtotal bagian dengan angka periode berjalan dan
+// periode pembanding.
+templ psakSubtotal(view models.ReportView, label string, amount int64, prior int64) {
 	<tr class="border-t border-line bg-panel/40">
 		<td class="px-5 py-2.5 font-medium text-ink">{ label }</td>
 		<td class="num px-5 py-2.5 text-right font-semibold text-ink">{ view.Money(amount) }</td>
+		<td class="num px-5 py-2.5 text-right font-medium text-muted">{ view.PriorMoney(prior) }</td>
 	</tr>
 }
 
+// psakGrand adalah baris total akhir laporan.
+templ psakGrand(view models.ReportView, label string, amount int64, prior int64) {
+	<tr class="border-t-2 border-line bg-accent-wash">
+		<td class="px-5 py-3.5 font-semibold text-ink">{ label }</td>
+		<td class="num px-5 py-3.5 text-right font-semibold text-ink">{ view.Money(amount) }</td>
+		<td class="num px-5 py-3.5 text-right font-medium text-muted">{ view.PriorMoney(prior) }</td>
+	</tr>
+}
+
+// reportColumns adalah kepala kolom: satu kolom nama pos, satu kolom periode
+// berjalan, satu kolom periode pembanding.
+templ reportColumns(view models.ReportView) {
+	<thead>
+		<tr class="border-b border-line bg-panel/60 text-[11px] uppercase tracking-wider text-muted">
+			<th class="px-5 py-2.5 text-left">Pos</th>
+			<th class="px-5 py-2.5 text-right">
+				<span class="block">Periode Berjalan</span>
+				<span class="block font-normal normal-case tracking-normal">{ view.DateFromLabel + " s.d. " + view.DateToLabel }</span>
+			</th>
+			<th class="px-5 py-2.5 text-right">
+				<span class="block">Periode Pembanding</span>
+				<span class="block font-normal normal-case tracking-normal">{ comparativeLabel(view) }</span>
+			</th>
+		</tr>
+	</thead>
+}
+
+// comparativeLabel adalah kepala kolom pembanding: nama periode pembanding
+// atau keterangan bahwa periode pembanding belum ada.
+func comparativeLabel(view models.ReportView) string {
+	if !view.HasComparative {
+		return "belum tersedia"
+	}
+	return view.PriorPeriodName
+}
+
 // reportIdentity adalah kepala laporan menurut PSAK 201 par. 49-53: nama
-// entitas, jenis laporan, periode penyajian, mata uang, dan pembulatan.
+// entitas, terpisah vs konsolidasi, periode pelaporan, mata uang pelaporan,
+// dan pembulatan penyajian.
 templ reportIdentity(view models.ReportView, reportTitle string, periodText string) {
 	<div class="border-b border-line px-5 py-4">
 		<div class="text-sm font-semibold text-ink">{ view.CompanyName }</div>
@@ -47,10 +87,10 @@ templ reportIdentity(view models.ReportView, reportTitle string, periodText stri
 		}
 		<div class="mt-2 text-sm font-semibold text-ink">{ reportTitle }</div>
 		<div class="mt-0.5 text-xs text-muted">{ periodText }</div>
-		if view.EntityNote != "" {
-			<div class="mt-0.5 text-xs text-muted">{ view.EntityNote }</div>
-		}
-		<div class="mt-0.5 text-xs text-muted">{ view.RoundingLabel }</div>
+		<div class="mt-0.5 text-xs text-muted">Periode pelaporan: { view.DateFromLabel } s.d. { view.DateToLabel }</div>
+		<div class="mt-0.5 text-xs text-muted">{ view.ConsolidationLabel() }</div>
+		<div class="mt-0.5 text-xs text-muted">Mata uang pelaporan: <span class="num">{ view.BaseCurrency }</span></div>
+		<div class="mt-0.5 text-xs text-muted">Pembulatan: { view.RoundingLabel }</div>
 	</div>
 }
 
@@ -70,11 +110,11 @@ func reportTitleFor(mode string) string {
 func reportDescFor(mode string) string {
 	switch mode {
 	case "pl":
-		return "Kinerja perusahaan pada periode terpilih. Disusun menurut PSAK 201 par. 82."
+		return "Kinerja perusahaan pada periode terpilih dengan kolom pembanding. Disusun menurut PSAK 201 par. 82."
 	case "bs":
-		return "Posisi aset, liabilitas, dan ekuitas pada akhir periode. Disusun menurut PSAK 201 par. 54-76."
+		return "Posisi aset, liabilitas, dan ekuitas pada akhir periode dengan kolom pembanding. Disusun menurut PSAK 201 par. 54-76."
 	default:
-		return "Laporan laba rugi dan laporan posisi keuangan menurut PSAK 201 (dulu PSAK 1)."
+		return "Laporan laba rugi dan laporan posisi keuangan menurut PSAK 201."
 	}
 }
 
@@ -112,6 +152,17 @@ templ ReportsPage(shell Shell, company db.Company, view models.ReportView) {
 			<div class="w-44">
 				@dateField("to", "to", "Sampai tanggal", view.DateTo)
 			</div>
+			<div>
+				<label class="mb-1.5 block text-sm font-medium text-ink" for="compare">Periode pembanding</label>
+				<select id="compare" name="compare" class={ inputClass + " w-56" }>
+					<option value="">Otomatis (periode sebelumnya)</option>
+					for _, p := range view.Periods {
+						<option value={ strconv.FormatInt(p.ID, 10) } selected?={ p.ID == view.ComparePeriodID }>
+							{ p.Name }
+						</option>
+					}
+				</select>
+			</div>
 			<button type="submit" class={ btnPrimary }>Tampilkan</button>
 		</form>
 		<div class={ reportGridClass(view.Mode) }>
@@ -119,28 +170,40 @@ templ ReportsPage(shell Shell, company db.Company, view models.ReportView) {
 				<div class={ cardClass }>
 					@reportIdentity(view, "Laporan Laba Rugi", "Untuk periode "+view.PeriodName)
 					<table class="w-full text-sm">
+						@reportColumns(view)
 						<tbody class="divide-y divide-line/50">
 							@psakHeader("Pendapatan")
 							for _, line := range view.Revenue {
 								@reportRow(view, line)
 							}
-							@psakSubtotal(view, "Jumlah Pendapatan", view.TotalRevenue)
-							@psakHeader("Beban")
-							for _, line := range view.Expense {
+							@psakSubtotal(view, "Jumlah Pendapatan", view.TotalRevenue, view.PriorTotalRevenue)
+							@psakHeader("Beban Operasional (menurut sifat)")
+							for _, line := range view.OperatingExpense {
 								@reportRow(view, line)
 							}
-							@psakSubtotal(view, "Jumlah Beban", view.TotalExpense)
+							@psakSubtotal(view, "Jumlah Beban Operasional", view.TotalOperatingExpense, view.PriorTotalOperatingExpense)
+							@psakSubtotal(view, "Laba Operasi", view.OperatingProfit, view.PriorOperatingProfit)
+							@psakHeader("Biaya Keuangan")
+							for _, line := range view.FinanceCost {
+								@reportRow(view, line)
+							}
+							@psakSubtotal(view, "Jumlah Biaya Keuangan", view.TotalFinanceCost, view.PriorTotalFinanceCost)
+							@psakSubtotal(view, "Laba Sebelum Pajak", view.ProfitBeforeTax, view.PriorProfitBeforeTax)
+							@psakHeader("Beban Pajak Penghasilan")
+							for _, line := range view.TaxExpense {
+								@reportRow(view, line)
+							}
+							@psakSubtotal(view, "Jumlah Beban Pajak", view.TotalTaxExpense, view.PriorTotalTaxExpense)
 						</tbody>
 						<tfoot>
-							<tr class="border-t-2 border-line bg-accent-wash">
-								<td class="px-5 py-3.5 font-semibold text-ink">Laba (Rugi) Periode Berjalan</td>
-								<td class="num px-5 py-3.5 text-right font-semibold text-ink">{ view.Money(view.NetIncome) }</td>
-							</tr>
+							@psakGrand(view, "Laba (Rugi) Periode Berjalan", view.NetIncome, view.PriorNetIncome)
 						</tfoot>
 					</table>
 					<div class="border-t border-line px-5 py-3 text-xs text-muted">
-						Bagian penghasilan komprehensif lain (par. 82A) dan kolom pembanding periode sebelumnya
-						(par. 38) belum disajikan, masih dalam antrean batch berikutnya.
+						Beban disajikan menurut sifat (PSAK 201 par. 99-105): setiap akun beban mewakili
+						satu sifat beban. Biaya keuangan (par. 82 huruf b) dan beban pajak (par. 82 huruf d)
+						disajikan sebagai pos tersendiri. Bagian penghasilan komprehensif lain (par. 82A)
+						belum disajikan dan akan menyusul pada batch berikutnya.
 					</div>
 				</div>
 			}
@@ -148,46 +211,45 @@ templ ReportsPage(shell Shell, company db.Company, view models.ReportView) {
 				<div class={ cardClass }>
 					@reportIdentity(view, "Laporan Posisi Keuangan", "Per "+view.DateToLabel)
 					<table class="w-full text-sm">
+						@reportColumns(view)
 						<tbody class="divide-y divide-line/50">
 							@psakHeader("Aset Lancar")
 							for _, line := range view.CurrentAssets {
 								@reportRow(view, line)
 							}
-							@psakSubtotal(view, "Jumlah Aset Lancar", view.TotalCurrentAssets)
+							@psakSubtotal(view, "Jumlah Aset Lancar", view.TotalCurrentAssets, view.PriorTotalCurrentAssets)
 							@psakHeader("Aset Tidak Lancar")
 							for _, line := range view.NonCurrentAssets {
 								@reportRow(view, line)
 							}
-							@psakSubtotal(view, "Jumlah Aset Tidak Lancar", view.TotalNonCurrentAssets)
-							@psakSubtotal(view, "Jumlah Aset", view.TotalAssets)
+							@psakSubtotal(view, "Jumlah Aset Tidak Lancar", view.TotalNonCurrentAssets, view.PriorTotalNonCurrentAssets)
+							@psakSubtotal(view, "Jumlah Aset", view.TotalAssets, view.PriorTotalAssets)
 							@psakHeader("Liabilitas Jangka Pendek")
 							for _, line := range view.CurrentLiabilities {
 								@reportRow(view, line)
 							}
-							@psakSubtotal(view, "Jumlah Liabilitas Jangka Pendek", view.TotalCurrentLiabilities)
+							@psakSubtotal(view, "Jumlah Liabilitas Jangka Pendek", view.TotalCurrentLiabilities, view.PriorTotalCurrentLiabilities)
 							@psakHeader("Liabilitas Jangka Panjang")
 							for _, line := range view.NonCurrentLiabilities {
 								@reportRow(view, line)
 							}
-							@psakSubtotal(view, "Jumlah Liabilitas Jangka Panjang", view.TotalNonCurrentLiabilities)
-							@psakSubtotal(view, "Jumlah Liabilitas", view.TotalLiabilities)
+							@psakSubtotal(view, "Jumlah Liabilitas Jangka Panjang", view.TotalNonCurrentLiabilities, view.PriorTotalNonCurrentLiabilities)
+							@psakSubtotal(view, "Jumlah Liabilitas", view.TotalLiabilities, view.PriorTotalLiabilities)
 							@psakHeader("Ekuitas")
 							for _, line := range view.Equity {
 								@reportRow(view, line)
 							}
-							if view.UnclosedProfit != 0 {
+							if view.UnclosedProfit != 0 || view.PriorUnclosedProfit != 0 {
 								<tr class="transition-colors hover:bg-panel/60">
 									<td class="px-5 py-2 text-label">Laba (Rugi) Periode Belum Ditutup</td>
 									<td class="num px-5 py-2 text-right text-ink">{ view.Money(view.UnclosedProfit) }</td>
+									<td class="num px-5 py-2 text-right text-muted">{ view.PriorMoney(view.PriorUnclosedProfit) }</td>
 								</tr>
 							}
-							@psakSubtotal(view, "Jumlah Ekuitas", view.TotalEquity+view.UnclosedProfit)
+							@psakSubtotal(view, "Jumlah Ekuitas", view.TotalEquity+view.UnclosedProfit, view.PriorTotalEquity+view.PriorUnclosedProfit)
 						</tbody>
 						<tfoot>
-							<tr class="border-t-2 border-line bg-accent-wash">
-								<td class="px-5 py-3.5 font-semibold text-ink">Jumlah Liabilitas dan Ekuitas</td>
-								<td class="num px-5 py-3.5 text-right font-semibold text-ink">{ view.Money(view.TotalLiabEquity) }</td>
-							</tr>
+							@psakGrand(view, "Jumlah Liabilitas dan Ekuitas", view.TotalLiabEquity, view.PriorTotalLiabEquity)
 							<tr class="border-t border-line bg-panel/40">
 								<td class="px-5 py-3 text-sm font-medium text-ink">Keseimbangan (A = L + E)</td>
 								<td class="px-5 py-3 text-right text-sm">
@@ -204,6 +266,22 @@ templ ReportsPage(shell Shell, company db.Company, view models.ReportView) {
 										</span>
 									}
 								</td>
+								<td class="px-5 py-3 text-right text-sm">
+									if view.HasComparative {
+										if view.PriorTotalAssets == view.PriorTotalLiabEquity {
+											<span class="inline-flex items-center gap-1.5 rounded-input bg-ok/10 px-2.5 py-1 text-xs font-medium text-ok">
+												<svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+													<path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/>
+												</svg>
+												Berimbang
+											</span>
+										} else {
+											<span class="text-muted">
+												Selisih <span class="num font-medium">{ view.Money(view.PriorTotalAssets - view.PriorTotalLiabEquity) }</span>
+											</span>
+										}
+									}
+								</td>
 							</tr>
 						</tfoot>
 					</table>
@@ -211,10 +289,12 @@ templ ReportsPage(shell Shell, company db.Company, view models.ReportView) {
 			}
 		</div>
 		<p class="mt-6 text-xs leading-relaxed text-muted">
-			Rujukan: PSAK 201 par. 49-53 identitas laporan, par. 54 pos minimum laporan posisi keuangan,
-			par. 60-76 klasifikasi lancar dan tidak lancar, par. 82 pos minimum laba rugi, par. 106-110
-			perubahan ekuitas, par. 112-138 catatan atas laporan keuangan. Klasifikasi tiap akun diatur
-			lewat menu Buku Besar (Kelola Akun); satuan pembulatan angka diatur lewat menu Pengaturan.
+			Rujukan: PSAK 201 par. 38 informasi komparatif (satu periode sebelumnya), par. 49-53 identitas
+			laporan, par. 54 pos minimum laporan posisi keuangan, par. 60-76 klasifikasi lancar dan tidak
+			lancar, par. 82 pos minimum laba rugi (termasuk biaya keuangan dan beban pajak sebagai pos
+			tersendiri), par. 99-105 analisis beban menurut sifat, par. 106-110 perubahan ekuitas,
+			par. 112-138 catatan atas laporan keuangan. Klasifikasi tiap akun diatur lewat menu Buku
+			Besar (Kelola Akun); satuan pembulatan angka diatur lewat menu Pengaturan.
 		</p>
 	}
 }

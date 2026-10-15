@@ -1305,7 +1305,7 @@ func appFooter() templ.Component {
 			templ_7745c5c3_Var69 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<footer class=\"border-t border-line bg-white px-4 py-4 sm:px-6 lg:px-8 xl:px-10\"><div class=\"flex flex-wrap items-center justify-between gap-2 text-xs text-muted\"><span><span class=\"font-medium text-label\">Akunting</span> · aplikasi akuntansi multi-perusahaan, laporan keuangan disusun menurut PSAK 201 (dulu PSAK 1).</span> <span>© 2026 Akunting. Seluruh hak cipta dilindungi.</span></div></footer>")
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<footer class=\"border-t border-line bg-white px-4 py-4 sm:px-6 lg:px-8 xl:px-10\"><div class=\"flex flex-wrap items-center justify-between gap-2 text-xs text-muted\"><span><span class=\"font-medium text-label\">Akunting</span> · aplikasi akuntansi multi-perusahaan, laporan keuangan disusun menurut PSAK 201.</span> <span>© 2026 Akunting. Seluruh hak cipta dilindungi.</span></div></footer>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

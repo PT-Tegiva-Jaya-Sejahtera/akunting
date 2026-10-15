@@ -582,7 +582,7 @@ func PeriodsPage(shell Shell, company db.Company, periods []models.PeriodView, h
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("\">Simpan periode</button></div></form></div><p class=\"mt-6 text-xs leading-relaxed text-muted\">Rujukan: PSAK 201 (dulu PSAK 1) par. 36-37 frekuensi pelaporan, par. 45 konsistensi penyajian antar periode, par. 10 huruf f laporan posisi keuangan awal periode saat penyajian kembali. Pembulatan penyajian angka diatur pada halaman Pengaturan.</p>")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("\">Simpan periode</button></div></form></div><p class=\"mt-6 text-xs leading-relaxed text-muted\">Rujukan: PSAK 201 par. 36-37 frekuensi pelaporan, par. 45 konsistensi penyajian antar periode, par. 10 huruf f laporan posisi keuangan awal periode saat penyajian kembali. Pembulatan penyajian angka diatur pada halaman Pengaturan.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

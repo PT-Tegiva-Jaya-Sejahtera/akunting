@@ -14,7 +14,7 @@ import (
 )
 
 // AccountsGet menampilkan daftar akun (Chart of Accounts) beserta
-// sub-jenis PSAK 1 untuk klasifikasi laporan.
+// sub-jenis PSAK 201 untuk klasifikasi laporan.
 func (h *Handlers) AccountsGet(w http.ResponseWriter, r *http.Request) {
 	user, role, company, ok := h.companyContext(w, r)
 	if !ok {

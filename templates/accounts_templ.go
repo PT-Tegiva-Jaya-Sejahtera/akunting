@@ -15,7 +15,7 @@ import (
 	"accounting/internal/models"
 )
 
-// subTypeOptions merender pilihan sub-jenis akun PSAK 1.
+// subTypeOptions merender pilihan sub-jenis akun PSAK 201.
 func subTypeOptions(current string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -309,7 +309,7 @@ func systemRoleOptions(current string) templ.Component {
 	})
 }
 
-// AccountsPage adalah menu kelola akun dengan sub-jenis PSAK 1.
+// AccountsPage adalah menu kelola akun dengan sub-jenis PSAK 201.
 func AccountsPage(shell Shell, company db.Company, accounts []db.Account, errMsg string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -356,7 +356,7 @@ func AccountsPage(shell Shell, company db.Company, accounts []db.Account, errMsg
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(" · sub-jenis akun menentukan posisi setiap akun di Laporan Posisi Keuangan (PSAK 1).</div></div></div>")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(" · sub-jenis akun menentukan posisi setiap akun di Laporan Posisi Keuangan (PSAK 201).</div></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -752,7 +752,7 @@ func AccountsPage(shell Shell, company db.Company, accounts []db.Account, errMsg
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("\">Sub-Jenis (PSAK 1)</th>")
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("\">Sub-Jenis (PSAK 201)</th>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

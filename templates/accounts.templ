@@ -7,7 +7,7 @@ import (
 	"accounting/internal/models"
 )
 
-// subTypeOptions merender pilihan sub-jenis akun PSAK 1.
+// subTypeOptions merender pilihan sub-jenis akun PSAK 201.
 templ subTypeOptions(current string) {
 	<option value="aset_lancar" selected?={ current == "aset_lancar" }>Aset Lancar</option>
 	<option value="aset_tidak_lancar" selected?={ current == "aset_tidak_lancar" }>Aset Tidak Lancar</option>
@@ -42,7 +42,7 @@ templ systemRoleOptions(current string) {
 	</option>
 }
 
-// AccountsPage adalah menu kelola akun dengan sub-jenis PSAK 1.
+// AccountsPage adalah menu kelola akun dengan sub-jenis PSAK 201.
 templ AccountsPage(shell Shell, company db.Company, accounts []db.Account, errMsg string) {
 	@Layout(shell) {
 		<div class="flex flex-wrap items-end justify-between gap-4">
@@ -50,7 +50,7 @@ templ AccountsPage(shell Shell, company db.Company, accounts []db.Account, errMs
 				<h1 class="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">Daftar Akun</h1>
 				<div class="mt-1.5 text-sm text-muted">
 					{ company.Name } · sub-jenis akun menentukan posisi setiap akun di
-					Laporan Posisi Keuangan (PSAK 1).
+					Laporan Posisi Keuangan (PSAK 201).
 				</div>
 			</div>
 		</div>
@@ -119,7 +119,7 @@ templ AccountsPage(shell Shell, company db.Company, accounts []db.Account, errMs
 								<th class={ thClass }>Kode</th>
 								<th class={ thClass }>Nama</th>
 								<th class={ thClass }>Jenis</th>
-								<th class={ thClass }>Sub-Jenis (PSAK 1)</th>
+								<th class={ thClass }>Sub-Jenis (PSAK 201)</th>
 								<th class={ thClass }>Saldo Normal</th>
 								<th class={ thClass }>Aktif</th>
 								<th class={ thClass + " text-center" }>Aksi</th>
