@@ -5,6 +5,7 @@ go 1.27.2
 require (
 	github.com/a-h/templ v0.2.778
 	github.com/go-chi/chi/v5 v5.1.0
+	github.com/go-pdf/fpdf v0.9.0
 	github.com/jackc/pgx/v5 v5.7.1
 	golang.org/x/crypto v0.27.0
 )

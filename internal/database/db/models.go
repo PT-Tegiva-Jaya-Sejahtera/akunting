@@ -312,6 +312,48 @@ func (ns NullPeriodStatus) Value() (driver.Value, error) {
 	return string(ns.PeriodStatus), nil
 }
 
+type Pillar string
+
+const (
+	PillarPsak201 Pillar = "psak201"
+	PillarSakEmkm Pillar = "sak_emkm"
+)
+
+func (e *Pillar) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = Pillar(s)
+	case string:
+		*e = Pillar(s)
+	default:
+		return fmt.Errorf("unsupported scan type for Pillar: %T", src)
+	}
+	return nil
+}
+
+type NullPillar struct {
+	Pillar Pillar
+	Valid  bool // Valid is true if Pillar is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPillar) Scan(value interface{}) error {
+	if value == nil {
+		ns.Pillar, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.Pillar.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPillar) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.Pillar), nil
+}
+
 type Account struct {
 	ID            int64
 	CompanyID     int64
@@ -339,6 +381,7 @@ type Company struct {
 	EntityNote   string
 	// Kunci acak pada URL /companies/<kunci>, menggantikan id agar tidak mudah ditebak.
 	UrlKey string
+	Pillar Pillar
 }
 
 type CompanyUser struct {

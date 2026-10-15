@@ -3,3 +3,7 @@
 .commandcode/
 *.log
 .env
+
+# Semua .sql proyek (migrasi + queries.sql) wajib terlacak. Baris negasi ini
+# menangkal pola *.sql di gitignore global yang bisa menyembunyikannya.
+!*.sql

@@ -128,7 +128,7 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 const createCompany = `-- name: CreateCompany :one
 INSERT INTO companies (name, slug, base_currency, url_key)
 VALUES ($1, $2, $3, $4)
-RETURNING id, name, slug, base_currency, created_at, updated_at, address, npwp, rounding_unit, entity_note, url_key
+RETURNING id, name, slug, base_currency, created_at, updated_at, address, npwp, rounding_unit, entity_note, url_key, pillar
 `
 
 type CreateCompanyParams struct {
@@ -158,6 +158,7 @@ func (q *Queries) CreateCompany(ctx context.Context, arg CreateCompanyParams) (C
 		&i.RoundingUnit,
 		&i.EntityNote,
 		&i.UrlKey,
+		&i.Pillar,
 	)
 	return i, err
 }
@@ -780,7 +781,7 @@ func (q *Queries) GetAccountBySystemRole(ctx context.Context, arg GetAccountBySy
 }
 
 const getCompanyByID = `-- name: GetCompanyByID :one
-SELECT id, name, slug, base_currency, created_at, updated_at, address, npwp, rounding_unit, entity_note, url_key FROM companies WHERE id = $1
+SELECT id, name, slug, base_currency, created_at, updated_at, address, npwp, rounding_unit, entity_note, url_key, pillar FROM companies WHERE id = $1
 `
 
 func (q *Queries) GetCompanyByID(ctx context.Context, id int64) (Company, error) {
@@ -798,12 +799,13 @@ func (q *Queries) GetCompanyByID(ctx context.Context, id int64) (Company, error)
 		&i.RoundingUnit,
 		&i.EntityNote,
 		&i.UrlKey,
+		&i.Pillar,
 	)
 	return i, err
 }
 
 const getCompanyByKey = `-- name: GetCompanyByKey :one
-SELECT id, name, slug, base_currency, created_at, updated_at, address, npwp, rounding_unit, entity_note, url_key FROM companies WHERE url_key = $1
+SELECT id, name, slug, base_currency, created_at, updated_at, address, npwp, rounding_unit, entity_note, url_key, pillar FROM companies WHERE url_key = $1
 `
 
 func (q *Queries) GetCompanyByKey(ctx context.Context, urlKey string) (Company, error) {
@@ -821,12 +823,13 @@ func (q *Queries) GetCompanyByKey(ctx context.Context, urlKey string) (Company, 
 		&i.RoundingUnit,
 		&i.EntityNote,
 		&i.UrlKey,
+		&i.Pillar,
 	)
 	return i, err
 }
 
 const getCompanyBySlug = `-- name: GetCompanyBySlug :one
-SELECT id, name, slug, base_currency, created_at, updated_at, address, npwp, rounding_unit, entity_note, url_key FROM companies WHERE slug = $1
+SELECT id, name, slug, base_currency, created_at, updated_at, address, npwp, rounding_unit, entity_note, url_key, pillar FROM companies WHERE slug = $1
 `
 
 func (q *Queries) GetCompanyBySlug(ctx context.Context, slug string) (Company, error) {
@@ -844,6 +847,7 @@ func (q *Queries) GetCompanyBySlug(ctx context.Context, slug string) (Company, e
 		&i.RoundingUnit,
 		&i.EntityNote,
 		&i.UrlKey,
+		&i.Pillar,
 	)
 	return i, err
 }
