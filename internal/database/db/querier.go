@@ -18,6 +18,9 @@ type Querier interface {
 	// ============================================================
 	// Chart of Accounts
 	// ============================================================
+	// Penanda subledger (is_receivable/is_payable) dihitung pemanggil lewat
+	// models.SubledgerFlags dari psak_line/sub_type, pola yang sama dengan
+	// models.GuessPsakLine untuk psak_line, supaya akun baru langsung bertanda.
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
 	CreateCompany(ctx context.Context, arg CreateCompanyParams) (Company, error)
 	CreateFiscalPeriod(ctx context.Context, arg CreateFiscalPeriodParams) (FiscalPeriod, error)
@@ -122,22 +125,32 @@ type Querier interface {
 	ListJournalKeys(ctx context.Context, companyID int64) ([]ListJournalKeysRow, error)
 	ListJournals(ctx context.Context, arg ListJournalsParams) ([]Journal, error)
 	// ============================================================
+	// Pihak (pelanggan/supplier)
+	// ============================================================
+	// Daftar pihak perusahaan untuk dropdown form jurnal. Pelanggan dan supplier
+	// berada di satu tabel, dibedakan kolom party_type.
+	ListParties(ctx context.Context, companyID int64) ([]Party, error)
+	// ============================================================
 	// Subledger hutang usaha (Stage 3b)
 	// ============================================================
 	// Mutasi hutang per jurnal sampai tanggal laporan: dasar open item untuk
 	// aging. Hanya akun bertanda is_payable dan jurnal posted yang dihitung.
 	// Arah mutasi dibalik dari piutang (kredit - debit): positif = tagihan
-	// supplier, negatif = pembayaran. Jurnal tanpa pihak tetap disertakan
-	// (party_id 0) supaya jumlah subledger selalu sama dengan saldo akun
-	// hutang usaha pada buku besar.
+	// supplier, negatif = pembayaran. Pihak subledger ini hanya supplier
+	// (party_type = 'supplier'): jurnal yang pihaknya pelanggan diperlakukan
+	// sebagai jurnal tanpa pihak, dengan alasan yang sama dengan subledger
+	// piutang di atas.
 	ListPayableMovements(ctx context.Context, arg ListPayableMovementsParams) ([]ListPayableMovementsRow, error)
 	// ============================================================
 	// Subledger piutang usaha (Stage 3a)
 	// ============================================================
 	// Mutasi piutang per jurnal sampai tanggal laporan: dasar open item untuk
 	// aging. Hanya akun bertanda is_receivable dan jurnal posted yang dihitung.
-	// Jurnal tanpa pihak tetap disertakan (party_id 0) supaya jumlah subledger
-	// selalu sama dengan saldo akun piutang pada buku besar.
+	// Pihak subledger ini hanya pelanggan (party_type = 'customer'): jurnal yang
+	// pihaknya supplier diperlakukan sebagai jurnal tanpa pihak, supaya pelanggan
+	// tidak pernah tampil di subledger hutang dan sebaliknya. Jurnal tanpa pihak
+	// tetap disertakan (party_id 0) supaya jumlah subledger selalu sama dengan
+	// saldo akun piutang pada buku besar.
 	ListReceivableMovements(ctx context.Context, arg ListReceivableMovementsParams) ([]ListReceivableMovementsRow, error)
 	ListRecentJournals(ctx context.Context, arg ListRecentJournalsParams) ([]Journal, error)
 	MarkInvitationUsed(ctx context.Context, arg MarkInvitationUsedParams) (int64, error)

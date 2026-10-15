@@ -82,8 +82,9 @@ templ JournalsListPage(shell Shell, company db.Company, journals []db.Journal) {
 }
 
 // JournalFormPage adalah form input jurnal double-entry dengan baris
-// dinamis (HTMX) dan indikator saldo langsung.
-templ JournalFormPage(shell Shell, company db.Company, accounts []db.Account, form models.JournalForm) {
+// dinamis (HTMX) dan indikator saldo langsung. Pihak (pelanggan/supplier) dan
+// tanggal jatuh tempo bersifat opsional, dipakai subledger piutang/hutang.
+templ JournalFormPage(shell Shell, company db.Company, accounts []db.Account, parties []db.Party, form models.JournalForm) {
 	@Layout(shell) {
 		<div class="flex flex-wrap items-end justify-between gap-4">
 			<div class="min-w-0">
@@ -102,7 +103,7 @@ templ JournalFormPage(shell Shell, company db.Company, accounts []db.Account, fo
 			action={ companyPath(company.UrlKey, "/journals") }
 			class="mt-8 space-y-6"
 		>
-			<div class={ cardClass + " grid gap-5 p-6 sm:grid-cols-2 lg:grid-cols-4" }>
+			<div class={ cardClass + " grid gap-5 p-6 sm:grid-cols-2 lg:grid-cols-6" }>
 				<div>
 					@dateField("journal_date", "journal_date", "Tanggal", form.Date)
 				</div>
@@ -126,6 +127,29 @@ templ JournalFormPage(shell Shell, company db.Company, accounts []db.Account, fo
 						value={ form.Memo }
 						class={ inputClass }
 					/>
+				</div>
+				<div>
+					<label class="mb-1.5 block text-sm font-medium text-ink" for="party_id">Pihak (opsional)</label>
+					<select id="party_id" name="party_id" class={ inputClass }>
+						<option value="0">-- tanpa pihak --</option>
+						<optgroup label="Pelanggan">
+							for _, p := range parties {
+								if p.PartyType == db.PartyTypeCustomer {
+									<option value={ strconv.FormatInt(p.ID, 10) } selected?={ p.ID == form.PartyID }>{ p.Name }</option>
+								}
+							}
+						</optgroup>
+						<optgroup label="Supplier">
+							for _, p := range parties {
+								if p.PartyType == db.PartyTypeSupplier {
+									<option value={ strconv.FormatInt(p.ID, 10) } selected?={ p.ID == form.PartyID }>{ p.Name }</option>
+								}
+							}
+						</optgroup>
+					</select>
+				</div>
+				<div>
+					@dateField("due_date", "due_date", "Jatuh Tempo (opsional)", form.DueDate)
 				</div>
 				<div class="flex items-end pb-1">
 					<label class="flex items-center gap-2 text-sm text-label">
@@ -272,7 +296,7 @@ templ JournalTotalsFragment(totalDebit int64, totalCredit int64) {
 }
 
 // JournalDetailPage menampilkan satu jurnal beserta baris ledger-nya.
-templ JournalDetailPage(shell Shell, company db.Company, journal db.Journal, entries []db.GetJournalWithEntriesRow, totalDebit int64, totalCredit int64) {
+templ JournalDetailPage(shell Shell, company db.Company, journal db.Journal, entries []db.GetJournalWithEntriesRow, totalDebit int64, totalCredit int64, partyName string) {
 	@Layout(shell) {
 		<div class="flex flex-wrap items-end justify-between gap-4">
 			<div class="min-w-0">
@@ -281,6 +305,14 @@ templ JournalDetailPage(shell Shell, company db.Company, journal db.Journal, ent
 					<span class="num text-xs">{ journal.JournalDate.Time.Format("02-01-2006") }</span>
 					<span>·</span>
 					<span>{ journal.Memo }</span>
+					if partyName != "" {
+						<span>·</span>
+						<span>{ partyName }</span>
+					}
+					if journal.DueDate.Valid {
+						<span>·</span>
+						<span class="num">Jatuh tempo { journal.DueDate.Time.Format("02-01-2006") }</span>
+					}
 					<span>·</span>
 					<span class="inline-flex rounded-input bg-accent-wash px-2.5 py-0.5 text-xs font-medium text-accent">
 						{ journalStatusLabel(string(journal.Status)) }

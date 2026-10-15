@@ -26,6 +26,8 @@ type JournalForm struct {
 	Reference   string
 	Memo        string
 	IsAdjusting bool // jurnal penyesuaian, bukan jurnal umum
+	PartyID     int64  // pihak (pelanggan/supplier) dari tabel parties; 0 = tanpa pihak
+	DueDate     string // tanggal jatuh tempo, format YYYY-MM-DD; kosong = tidak ada
 	Lines       []JournalLine
 	Error       string
 }

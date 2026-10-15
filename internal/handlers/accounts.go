@@ -54,6 +54,12 @@ func (h *Handlers) AccountCreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// psak_line ditebak dari nama/jenis akun; penanda subledger
+	// (is_receivable/is_payable) diturunkan dari psak_line + sub_type supaya
+	// akun piutang/hutang baru langsung bertanda tanpa menunggu migrasi.
+	psakLine := models.GuessPsakLine(name, string(accType), subType, systemRole)
+	isReceivable, isPayable := models.SubledgerFlags(string(accType), subType, psakLine)
+
 	_, err := h.DB.CreateAccount(r.Context(), db.CreateAccountParams{
 		CompanyID:     company.ID,
 		Code:          code,
@@ -62,7 +68,9 @@ func (h *Handlers) AccountCreatePost(w http.ResponseWriter, r *http.Request) {
 		SubType:       subType,
 		NormalBalance: normal,
 		SystemRole:    systemRole,
-		PsakLine:      models.GuessPsakLine(name, string(accType), subType, systemRole),
+		PsakLine:      psakLine,
+		IsReceivable:  isReceivable,
+		IsPayable:     isPayable,
 	})
 	if err != nil {
 		h.renderAccounts(w, r, user, role, company, "Gagal menyimpan akun (kode mungkin sudah dipakai, atau peran sistem sudah dipegang akun lain).")

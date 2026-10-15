@@ -233,6 +233,10 @@ func main() {
 	// 11. Bukti subledger hutang usaha + aging (Stage 3b).
 	evidencePayables(ctx, pool, q, userID)
 
+	// 12. Bukti 3 sisa temuan Stage 3: backfill flag otomatis, UI input
+	// party + due_date, filter party_type di subledger.
+	evidenceSisa3(ctx, pool, q, userID)
+
 	fmt.Println("SEMUA SMOKE TEST LULUS")
 }
 

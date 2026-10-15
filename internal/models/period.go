@@ -276,6 +276,18 @@ func PsakLineLabel(code string) string {
 	}
 }
 
+// SubledgerFlags menurunkan penanda subledger akun: is_receivable untuk akun
+// piutang usaha dan is_payable untuk akun hutang usaha. Aturannya sama dengan
+// backfill migrasi 0014 (is_receivable) dan 0015 (is_payable), supaya akun
+// baru yang dibuat dari form atau seeder langsung bertanda tanpa menunggu
+// migrasi ulang. Seperti GuessPsakLine, hasilnya diturunkan dari psak_line
+// dan sub-type akun, tanpa hardcode id akun.
+func SubledgerFlags(accountType string, subType string, psakLine string) (isReceivable bool, isPayable bool) {
+	isReceivable = accountType == TypeAsset && psakLine == PsakPiutang
+	isPayable = accountType == TypeLiability && subType == SubCurrentLiability && psakLine == PsakUtangUsaha
+	return isReceivable, isPayable
+}
+
 // GuessPsakLine menebak pos minimum laporan dari nama, jenis, sub-jenis, dan
 // peran sistem akun. Hasilnya boleh diperbaiki manual dari halaman Akun.
 func GuessPsakLine(name string, accountType string, subType string, systemRole string) string {

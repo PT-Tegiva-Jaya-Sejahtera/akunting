@@ -177,6 +177,11 @@ func seedAccounts(ctx context.Context, q *db.Queries, companyID int64) error {
 		{"5001", "Beban Operasional", models.SubExpense, db.AccountTypeExpense, db.NormalBalanceDebit},
 	}
 	for _, a := range akun {
+		// psak_line ditebak seperti pembuatan akun dari form; penanda
+		// subledger (is_receivable/is_payable) diturunkan dari psak_line +
+		// sub_type supaya akun piutang/hutang bawaan seeder juga bertanda.
+		psak := models.GuessPsakLine(a.name, string(a.typ), a.subType, "")
+		isReceivable, isPayable := models.SubledgerFlags(string(a.typ), a.subType, psak)
 		if _, err := q.CreateAccount(ctx, db.CreateAccountParams{
 			CompanyID:     companyID,
 			Code:          a.code,
@@ -184,6 +189,9 @@ func seedAccounts(ctx context.Context, q *db.Queries, companyID int64) error {
 			AccountType:   a.typ,
 			SubType:       a.subType,
 			NormalBalance: a.normal,
+			PsakLine:      psak,
+			IsReceivable:  isReceivable,
+			IsPayable:     isPayable,
 		}); err != nil {
 			return err
 		}

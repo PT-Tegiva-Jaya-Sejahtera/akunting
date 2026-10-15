@@ -208,8 +208,11 @@ WHERE id = @id AND status = 'pending';
 -- ============================================================
 
 -- name: CreateAccount :one
-INSERT INTO accounts (company_id, code, name, account_type, sub_type, normal_balance, system_role, psak_line)
-VALUES (@company_id, @code, @name, @account_type, @sub_type, @normal_balance, @system_role, @psak_line)
+-- Penanda subledger (is_receivable/is_payable) dihitung pemanggil lewat
+-- models.SubledgerFlags dari psak_line/sub_type, pola yang sama dengan
+-- models.GuessPsakLine untuk psak_line, supaya akun baru langsung bertanda.
+INSERT INTO accounts (company_id, code, name, account_type, sub_type, normal_balance, system_role, psak_line, is_receivable, is_payable)
+VALUES (@company_id, @code, @name, @account_type, @sub_type, @normal_balance, @system_role, @psak_line, @is_receivable, @is_payable)
 RETURNING *;
 
 -- name: ListAccountsAll :many
@@ -267,10 +270,10 @@ guard AS (
       AND line_count >= 2
 ),
 journal AS (
-    INSERT INTO journals (company_id, journal_date, reference, memo, created_by, is_adjusting)
-    SELECT @company_id, @journal_date, @reference, @memo, @created_by, @is_adjusting
+    INSERT INTO journals (company_id, journal_date, reference, memo, created_by, is_adjusting, party_id, due_date)
+    SELECT @company_id, @journal_date, @reference, @memo, @created_by, @is_adjusting, @party_id, @due_date
     FROM guard
-    RETURNING id, company_id, journal_date, reference, memo, status, created_by, created_at, kind, period_id, is_adjusting
+    RETURNING id, company_id, journal_date, reference, memo, status, created_by, created_at, kind, period_id, is_adjusting, party_id, due_date
 ),
 lines AS (
     INSERT INTO ledger_entries (company_id, journal_id, account_id, description, debit, credit)
@@ -749,17 +752,32 @@ WHERE a.company_id = @company_id AND a.is_active = TRUE
 ORDER BY a.code;
 
 -- ============================================================
+-- Pihak (pelanggan/supplier)
+-- ============================================================
+
+-- Daftar pihak perusahaan untuk dropdown form jurnal. Pelanggan dan supplier
+-- berada di satu tabel, dibedakan kolom party_type.
+-- name: ListParties :many
+SELECT *
+FROM parties
+WHERE company_id = @company_id
+ORDER BY party_type, name;
+
+-- ============================================================
 -- Subledger piutang usaha (Stage 3a)
 -- ============================================================
 
 -- Mutasi piutang per jurnal sampai tanggal laporan: dasar open item untuk
 -- aging. Hanya akun bertanda is_receivable dan jurnal posted yang dihitung.
--- Jurnal tanpa pihak tetap disertakan (party_id 0) supaya jumlah subledger
--- selalu sama dengan saldo akun piutang pada buku besar.
+-- Pihak subledger ini hanya pelanggan (party_type = 'customer'): jurnal yang
+-- pihaknya supplier diperlakukan sebagai jurnal tanpa pihak, supaya pelanggan
+-- tidak pernah tampil di subledger hutang dan sebaliknya. Jurnal tanpa pihak
+-- tetap disertakan (party_id 0) supaya jumlah subledger selalu sama dengan
+-- saldo akun piutang pada buku besar.
 -- name: ListReceivableMovements :many
 SELECT
     j.id AS journal_id,
-    COALESCE(j.party_id, 0) AS party_id,
+    COALESCE(p.id, 0) AS party_id,
     COALESCE(p.name, '') AS party_name,
     j.reference,
     j.journal_date,
@@ -770,11 +788,12 @@ FROM journals j
 JOIN ledger_entries le ON le.journal_id = j.id AND le.company_id = j.company_id
 JOIN accounts a ON a.id = le.account_id AND a.company_id = le.company_id
 LEFT JOIN parties p ON p.id = j.party_id AND p.company_id = j.company_id
+    AND p.party_type = 'customer'
 WHERE j.company_id = @company_id
   AND j.status = 'posted'
   AND j.journal_date <= @as_of
   AND a.is_receivable
-GROUP BY j.id, j.party_id, p.name, j.reference, j.journal_date, j.due_date
+GROUP BY j.id, p.id, p.name, j.reference, j.journal_date, j.due_date
 ORDER BY j.journal_date, j.id;
 
 -- ============================================================
@@ -784,13 +803,14 @@ ORDER BY j.journal_date, j.id;
 -- Mutasi hutang per jurnal sampai tanggal laporan: dasar open item untuk
 -- aging. Hanya akun bertanda is_payable dan jurnal posted yang dihitung.
 -- Arah mutasi dibalik dari piutang (kredit - debit): positif = tagihan
--- supplier, negatif = pembayaran. Jurnal tanpa pihak tetap disertakan
--- (party_id 0) supaya jumlah subledger selalu sama dengan saldo akun
--- hutang usaha pada buku besar.
+-- supplier, negatif = pembayaran. Pihak subledger ini hanya supplier
+-- (party_type = 'supplier'): jurnal yang pihaknya pelanggan diperlakukan
+-- sebagai jurnal tanpa pihak, dengan alasan yang sama dengan subledger
+-- piutang di atas.
 -- name: ListPayableMovements :many
 SELECT
     j.id AS journal_id,
-    COALESCE(j.party_id, 0) AS party_id,
+    COALESCE(p.id, 0) AS party_id,
     COALESCE(p.name, '') AS party_name,
     j.reference,
     j.journal_date,
@@ -801,9 +821,10 @@ FROM journals j
 JOIN ledger_entries le ON le.journal_id = j.id AND le.company_id = j.company_id
 JOIN accounts a ON a.id = le.account_id AND a.company_id = le.company_id
 LEFT JOIN parties p ON p.id = j.party_id AND p.company_id = j.company_id
+    AND p.party_type = 'supplier'
 WHERE j.company_id = @company_id
   AND j.status = 'posted'
   AND j.journal_date <= @as_of
   AND a.is_payable
-GROUP BY j.id, j.party_id, p.name, j.reference, j.journal_date, j.due_date
+GROUP BY j.id, p.id, p.name, j.reference, j.journal_date, j.due_date
 ORDER BY j.journal_date, j.id;

@@ -47,13 +47,17 @@ func (h *Handlers) JournalNewGet(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	parties, ok := h.partiesFor(w, r, company)
+	if !ok {
+		return
+	}
 
 	form := models.JournalForm{
 		Date:        time.Now().Format("2006-01-02"),
 		IsAdjusting: r.URL.Query().Get("adjusting") == "1",
 		Lines:       []models.JournalLine{{}, {}},
 	}
-	h.renderJournalForm(w, r, user, company, role, accounts, form)
+	h.renderJournalForm(w, r, user, company, role, accounts, parties, form)
 }
 
 // JournalLineGet mengembalikan satu baris kosong untuk ditambah HTMX
@@ -110,14 +114,18 @@ func (h *Handlers) JournalCreatePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	form, lines, errMsg := h.parseJournalForm(r)
+	parties, ok := h.partiesFor(w, r, company)
+	if !ok {
+		return
+	}
 	if errMsg == "" {
-		errMsg = validateJournalForm(form, lines, accounts)
+		errMsg = validateJournalForm(form, lines, accounts, parties)
 	}
 	if errMsg != "" {
 		form.Error = errMsg
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusBadRequest)
-		_ = templates.JournalFormPage(h.newShell(r, user, company, role, "journals", "Jurnal "+company.Name), company, accounts, form).Render(r.Context(), w)
+		_ = templates.JournalFormPage(h.newShell(r, user, company, role, "journals", "Jurnal "+company.Name), company, accounts, parties, form).Render(r.Context(), w)
 		return
 	}
 
@@ -133,6 +141,15 @@ func (h *Handlers) JournalCreatePost(w http.ResponseWriter, r *http.Request) {
 		Descriptions: make([]string, len(lines)),
 		Debits:       make([]pgtype.Numeric, len(lines)),
 		Credits:      make([]pgtype.Numeric, len(lines)),
+	}
+	// Pihak (pelanggan/supplier) dan tanggal jatuh tempo adalah atribut
+	// dokumen jurnal (skema Stage 3a: kolom journals.party_id + due_date).
+	if form.PartyID != 0 {
+		params.PartyID = pgtype.Int8{Int64: form.PartyID, Valid: true}
+	}
+	if strings.TrimSpace(form.DueDate) != "" {
+		due, _ := models.ParseDateID(form.DueDate)
+		params.DueDate = pgtype.Date{Time: due, Valid: true, InfinityModifier: pgtype.Finite}
 	}
 	for i, line := range lines {
 		params.AccountIds[i] = line.AccountID
@@ -151,7 +168,7 @@ func (h *Handlers) JournalCreatePost(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusBadRequest)
-		_ = templates.JournalFormPage(h.newShell(r, user, company, role, "journals", "Jurnal "+company.Name), company, accounts, form).Render(r.Context(), w)
+		_ = templates.JournalFormPage(h.newShell(r, user, company, role, "journals", "Jurnal "+company.Name), company, accounts, parties, form).Render(r.Context(), w)
 		return
 	}
 
@@ -196,9 +213,24 @@ func (h *Handlers) JournalDetailGet(w http.ResponseWriter, r *http.Request) {
 		totalCredit += models.NumericToCents(e.Credit)
 	}
 
+	// Nama pihak (pelanggan/supplier) untuk ditampilkan di header jurnal.
+	partyName := ""
+	if journal.PartyID.Valid {
+		parties, ok := h.partiesFor(w, r, company)
+		if !ok {
+			return
+		}
+		for _, p := range parties {
+			if p.ID == journal.PartyID.Int64 {
+				partyName = p.Name
+				break
+			}
+		}
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = templates.JournalDetailPage(h.newShell(r, user, company, role, "journals", "Jurnal "+journal.Reference), company, journal, entries,
-		totalDebit, totalCredit).Render(r.Context(), w)
+		totalDebit, totalCredit, partyName).Render(r.Context(), w)
 }
 
 // journalLineInput adalah baris hasil parsing yang sudah lolos format uang.
@@ -218,6 +250,14 @@ func (h *Handlers) parseJournalForm(r *http.Request) (models.JournalForm, []jour
 		Reference:   r.FormValue("reference"),
 		Memo:        r.FormValue("memo"),
 		IsAdjusting: r.FormValue("is_adjusting") == "on",
+		DueDate:     strings.TrimSpace(r.FormValue("due_date")),
+	}
+	if s := strings.TrimSpace(r.FormValue("party_id")); s != "" && s != "0" {
+		id, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return form, nil, "Pihak yang dipilih tidak valid."
+		}
+		form.PartyID = id
 	}
 
 	ids := r.Form["account_id"]
@@ -265,9 +305,28 @@ func (h *Handlers) parseJournalForm(r *http.Request) (models.JournalForm, []jour
 }
 
 // validateJournalForm menerapkan aturan double-entry sebelum menyimpan.
-func validateJournalForm(form models.JournalForm, lines []journalLineInput, accounts []db.Account) string {
+// Pihak harus ada di perusahaan ini; tanggal jatuh tempo opsional tetapi bila
+// diisi harus berformat tanggal yang dikenal.
+func validateJournalForm(form models.JournalForm, lines []journalLineInput, accounts []db.Account, parties []db.Party) string {
 	if _, err := models.ParseDateID(form.Date); err != nil {
 		return "Tanggal jurnal harus berformat dd/mm/yyyy."
+	}
+	if strings.TrimSpace(form.DueDate) != "" {
+		if _, err := models.ParseDateID(form.DueDate); err != nil {
+			return "Tanggal jatuh tempo harus berformat dd/mm/yyyy."
+		}
+	}
+	if form.PartyID != 0 {
+		found := false
+		for _, p := range parties {
+			if p.ID == form.PartyID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return "Pihak yang dipilih tidak dikenal di perusahaan ini."
+		}
 	}
 	if strings.TrimSpace(form.Reference) == "" {
 		return "Referensi jurnal wajib diisi."
@@ -304,9 +363,9 @@ func validateJournalForm(form models.JournalForm, lines []journalLineInput, acco
 }
 
 func (h *Handlers) renderJournalForm(w http.ResponseWriter, r *http.Request,
-	user appmw.SessionUser, company db.Company, role string, accounts []db.Account, form models.JournalForm) {
+	user appmw.SessionUser, company db.Company, role string, accounts []db.Account, parties []db.Party, form models.JournalForm) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = templates.JournalFormPage(h.newShell(r, user, company, role, "journals", "Jurnal "+company.Name), company, accounts, form).Render(r.Context(), w)
+	_ = templates.JournalFormPage(h.newShell(r, user, company, role, "journals", "Jurnal "+company.Name), company, accounts, parties, form).Render(r.Context(), w)
 }
 
 func (h *Handlers) accountsFor(w http.ResponseWriter, r *http.Request, company db.Company) ([]db.Account, bool) {
@@ -316,4 +375,15 @@ func (h *Handlers) accountsFor(w http.ResponseWriter, r *http.Request, company d
 		return nil, false
 	}
 	return accounts, true
+}
+
+// partiesFor mengambil daftar pihak (pelanggan/supplier) perusahaan untuk
+// dropdown form jurnal dan validasi pilihan user.
+func (h *Handlers) partiesFor(w http.ResponseWriter, r *http.Request, company db.Company) ([]db.Party, bool) {
+	parties, err := h.DB.ListParties(r.Context(), company.ID)
+	if err != nil {
+		http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
+		return nil, false
+	}
+	return parties, true
 }

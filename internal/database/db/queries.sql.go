@@ -78,8 +78,8 @@ func (q *Queries) CountJournals(ctx context.Context, companyID int64) (int64, er
 
 const createAccount = `-- name: CreateAccount :one
 
-INSERT INTO accounts (company_id, code, name, account_type, sub_type, normal_balance, system_role, psak_line)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO accounts (company_id, code, name, account_type, sub_type, normal_balance, system_role, psak_line, is_receivable, is_payable)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line, is_receivable, is_payable
 `
 
@@ -92,11 +92,16 @@ type CreateAccountParams struct {
 	NormalBalance NormalBalance
 	SystemRole    string
 	PsakLine      string
+	IsReceivable  bool
+	IsPayable     bool
 }
 
 // ============================================================
 // Chart of Accounts
 // ============================================================
+// Penanda subledger (is_receivable/is_payable) dihitung pemanggil lewat
+// models.SubledgerFlags dari psak_line/sub_type, pola yang sama dengan
+// models.GuessPsakLine untuk psak_line, supaya akun baru langsung bertanda.
 func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error) {
 	row := q.db.QueryRow(ctx, createAccount,
 		arg.CompanyID,
@@ -107,6 +112,8 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		arg.NormalBalance,
 		arg.SystemRole,
 		arg.PsakLine,
+		arg.IsReceivable,
+		arg.IsPayable,
 	)
 	var i Account
 	err := row.Scan(
@@ -280,10 +287,10 @@ guard AS (
       AND line_count >= 2
 ),
 journal AS (
-    INSERT INTO journals (company_id, journal_date, reference, memo, created_by, is_adjusting)
-    SELECT $5, $6, $7, $8, $9, $10
+    INSERT INTO journals (company_id, journal_date, reference, memo, created_by, is_adjusting, party_id, due_date)
+    SELECT $5, $6, $7, $8, $9, $10, $11, $12
     FROM guard
-    RETURNING id, company_id, journal_date, reference, memo, status, created_by, created_at, kind, period_id, is_adjusting
+    RETURNING id, company_id, journal_date, reference, memo, status, created_by, created_at, kind, period_id, is_adjusting, party_id, due_date
 ),
 lines AS (
     INSERT INTO ledger_entries (company_id, journal_id, account_id, description, debit, credit)
@@ -291,7 +298,7 @@ lines AS (
     FROM journal j
     CROSS JOIN input i
 )
-SELECT id, company_id, journal_date, reference, memo, status, created_by, created_at, kind, period_id, is_adjusting FROM journal
+SELECT id, company_id, journal_date, reference, memo, status, created_by, created_at, kind, period_id, is_adjusting, party_id, due_date FROM journal
 `
 
 type CreateJournalWithEntriesParams struct {
@@ -305,6 +312,8 @@ type CreateJournalWithEntriesParams struct {
 	Memo         string
 	CreatedBy    int64
 	IsAdjusting  bool
+	PartyID      pgtype.Int8
+	DueDate      pgtype.Date
 }
 
 type CreateJournalWithEntriesRow struct {
@@ -319,6 +328,8 @@ type CreateJournalWithEntriesRow struct {
 	Kind        JournalKind
 	PeriodID    pgtype.Int8
 	IsAdjusting bool
+	PartyID     pgtype.Int8
+	DueDate     pgtype.Date
 }
 
 // ============================================================
@@ -341,6 +352,8 @@ func (q *Queries) CreateJournalWithEntries(ctx context.Context, arg CreateJourna
 		arg.Memo,
 		arg.CreatedBy,
 		arg.IsAdjusting,
+		arg.PartyID,
+		arg.DueDate,
 	)
 	var i CreateJournalWithEntriesRow
 	err := row.Scan(
@@ -355,6 +368,8 @@ func (q *Queries) CreateJournalWithEntries(ctx context.Context, arg CreateJourna
 		&i.Kind,
 		&i.PeriodID,
 		&i.IsAdjusting,
+		&i.PartyID,
+		&i.DueDate,
 	)
 	return i, err
 }
@@ -2373,11 +2388,52 @@ func (q *Queries) ListJournals(ctx context.Context, arg ListJournalsParams) ([]J
 	return items, nil
 }
 
+const listParties = `-- name: ListParties :many
+
+SELECT id, company_id, party_type, name, code, created_at, updated_at
+FROM parties
+WHERE company_id = $1
+ORDER BY party_type, name
+`
+
+// ============================================================
+// Pihak (pelanggan/supplier)
+// ============================================================
+// Daftar pihak perusahaan untuk dropdown form jurnal. Pelanggan dan supplier
+// berada di satu tabel, dibedakan kolom party_type.
+func (q *Queries) ListParties(ctx context.Context, companyID int64) ([]Party, error) {
+	rows, err := q.db.Query(ctx, listParties, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Party{}
+	for rows.Next() {
+		var i Party
+		if err := rows.Scan(
+			&i.ID,
+			&i.CompanyID,
+			&i.PartyType,
+			&i.Name,
+			&i.Code,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPayableMovements = `-- name: ListPayableMovements :many
 
 SELECT
     j.id AS journal_id,
-    COALESCE(j.party_id, 0) AS party_id,
+    COALESCE(p.id, 0) AS party_id,
     COALESCE(p.name, '') AS party_name,
     j.reference,
     j.journal_date,
@@ -2388,11 +2444,12 @@ FROM journals j
 JOIN ledger_entries le ON le.journal_id = j.id AND le.company_id = j.company_id
 JOIN accounts a ON a.id = le.account_id AND a.company_id = le.company_id
 LEFT JOIN parties p ON p.id = j.party_id AND p.company_id = j.company_id
+    AND p.party_type = 'supplier'
 WHERE j.company_id = $1
   AND j.status = 'posted'
   AND j.journal_date <= $2
   AND a.is_payable
-GROUP BY j.id, j.party_id, p.name, j.reference, j.journal_date, j.due_date
+GROUP BY j.id, p.id, p.name, j.reference, j.journal_date, j.due_date
 ORDER BY j.journal_date, j.id
 `
 
@@ -2418,9 +2475,10 @@ type ListPayableMovementsRow struct {
 // Mutasi hutang per jurnal sampai tanggal laporan: dasar open item untuk
 // aging. Hanya akun bertanda is_payable dan jurnal posted yang dihitung.
 // Arah mutasi dibalik dari piutang (kredit - debit): positif = tagihan
-// supplier, negatif = pembayaran. Jurnal tanpa pihak tetap disertakan
-// (party_id 0) supaya jumlah subledger selalu sama dengan saldo akun
-// hutang usaha pada buku besar.
+// supplier, negatif = pembayaran. Pihak subledger ini hanya supplier
+// (party_type = 'supplier'): jurnal yang pihaknya pelanggan diperlakukan
+// sebagai jurnal tanpa pihak, dengan alasan yang sama dengan subledger
+// piutang di atas.
 func (q *Queries) ListPayableMovements(ctx context.Context, arg ListPayableMovementsParams) ([]ListPayableMovementsRow, error) {
 	rows, err := q.db.Query(ctx, listPayableMovements, arg.CompanyID, arg.AsOf)
 	if err != nil {
@@ -2454,7 +2512,7 @@ const listReceivableMovements = `-- name: ListReceivableMovements :many
 
 SELECT
     j.id AS journal_id,
-    COALESCE(j.party_id, 0) AS party_id,
+    COALESCE(p.id, 0) AS party_id,
     COALESCE(p.name, '') AS party_name,
     j.reference,
     j.journal_date,
@@ -2465,11 +2523,12 @@ FROM journals j
 JOIN ledger_entries le ON le.journal_id = j.id AND le.company_id = j.company_id
 JOIN accounts a ON a.id = le.account_id AND a.company_id = le.company_id
 LEFT JOIN parties p ON p.id = j.party_id AND p.company_id = j.company_id
+    AND p.party_type = 'customer'
 WHERE j.company_id = $1
   AND j.status = 'posted'
   AND j.journal_date <= $2
   AND a.is_receivable
-GROUP BY j.id, j.party_id, p.name, j.reference, j.journal_date, j.due_date
+GROUP BY j.id, p.id, p.name, j.reference, j.journal_date, j.due_date
 ORDER BY j.journal_date, j.id
 `
 
@@ -2494,8 +2553,11 @@ type ListReceivableMovementsRow struct {
 // ============================================================
 // Mutasi piutang per jurnal sampai tanggal laporan: dasar open item untuk
 // aging. Hanya akun bertanda is_receivable dan jurnal posted yang dihitung.
-// Jurnal tanpa pihak tetap disertakan (party_id 0) supaya jumlah subledger
-// selalu sama dengan saldo akun piutang pada buku besar.
+// Pihak subledger ini hanya pelanggan (party_type = 'customer'): jurnal yang
+// pihaknya supplier diperlakukan sebagai jurnal tanpa pihak, supaya pelanggan
+// tidak pernah tampil di subledger hutang dan sebaliknya. Jurnal tanpa pihak
+// tetap disertakan (party_id 0) supaya jumlah subledger selalu sama dengan
+// saldo akun piutang pada buku besar.
 func (q *Queries) ListReceivableMovements(ctx context.Context, arg ListReceivableMovementsParams) ([]ListReceivableMovementsRow, error) {
 	rows, err := q.db.Query(ctx, listReceivableMovements, arg.CompanyID, arg.AsOf)
 	if err != nil {
