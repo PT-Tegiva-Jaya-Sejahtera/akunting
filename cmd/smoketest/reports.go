@@ -449,10 +449,28 @@ func evidenceReports(ctx context.Context, pool *pgxpool.Pool, q *db.Queries, use
 	cek(selAkhir[0] == modalBS && selAkhir[1] == labaBS && selAkhir[2] == priveBS,
 		"HTML: komponen ekuitas (Modal %s, Saldo Laba %s, Prive %s) == Neraca (%s, %s, %s)",
 		selAkhir[0], selAkhir[1], selAkhir[2], modalBS, labaBS, priveBS)
-	cek(selAkhir[3] == uang(0),
-		"HTML: laba (rugi) belum ditutup pada saldo akhir = %s (buku sudah ditutup)", selAkhir[3])
+	// Buku sudah ditutup (CLOSE-2026 memindahkan semua akun laba/rugi ke
+	// saldo laba), tapi pajak kini PSAK 212 menambah akruan yang sengaja
+	// belum dibukukan lewat jurnal: 6.500.000 x 22% = 1.430.000 belum ada
+	// jurnalnya, jadi laba belum ditutup = 0 + BookedTax - CurrentTax =
+	// -1.430.000, diimbangi baris liabilitas "Utang Pajak Penghasilan
+	// (kini)" sehingga A = L + E tetap berimbang.
+	cek(selAkhir[3] == uang(rp(-1_430_000)),
+		"HTML: laba (rugi) belum ditutup pada saldo akhir = %s (buku ditutup, akruan pajak belum dibukukan)", selAkhir[3])
 	cek(selAkhir[4] == jumlahBS,
 		"HTML: saldo akhir periode (%s) == Jumlah Ekuitas Neraca (%s)", selAkhir[4], jumlahBS)
+
+	// Pajak kini pada Neraca: baris liabilitas akruan tampil dengan angka
+	// yang sama dengan beban pajak pada Laba Rugi, dan Neraca menutup.
+	pajakBS := rowNumCells(htmlBS, "Utang Pajak Penghasilan (kini)")[0]
+	jumlahAset := rowNumCells(htmlBS, "Jumlah Aset</td>")[0]
+	jumlahLE := rowNumCells(htmlBS, "Jumlah Liabilitas dan Ekuitas")[0]
+	cek(pajakBS == uang(rp(1_430_000)),
+		"HTML Neraca: Utang Pajak Penghasilan (kini) = %s (6.500.000 x 22%%)", pajakBS)
+	cek(jumlahLE == jumlahAset,
+		"HTML Neraca: Jumlah Aset (%s) == Jumlah Liabilitas dan Ekuitas (%s)", jumlahAset, jumlahLE)
+	cek(strings.Contains(htmlBS, "Berimbang") && !strings.Contains(htmlBS, "Selisih"),
+		"HTML Neraca: baris Keseimbangan (A = L + E) menunjukkan Berimbang")
 
 	// CaLK: kebijakan bernomor dengan referensi silang, estimasi, dan
 	// pernyataan kepatuhan semuanya tampil.
