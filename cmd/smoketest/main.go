@@ -237,6 +237,10 @@ func main() {
 	// party + due_date, filter party_type di subledger.
 	evidenceSisa3(ctx, pool, q, userID)
 
+	// 13. Bukti persediaan (PSAK 202, Stage 4b): item, mutasi stok, biaya
+	// rata-rata tertimbang, dan nilai persediaan.
+	evidenceInventory(ctx, pool, q, userID)
+
 	fmt.Println("SEMUA SMOKE TEST LULUS")
 }
 

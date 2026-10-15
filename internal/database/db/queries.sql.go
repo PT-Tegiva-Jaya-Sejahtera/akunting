@@ -269,6 +269,92 @@ func (q *Queries) CreateFixedAsset(ctx context.Context, arg CreateFixedAssetPara
 	return i, err
 }
 
+const createInventoryItem = `-- name: CreateInventoryItem :one
+
+INSERT INTO inventory_items (
+    company_id, name, sku, unit
+) VALUES (
+    $1, $2, $3, $4
+)
+RETURNING id, company_id, name, sku, unit, created_at, updated_at
+`
+
+type CreateInventoryItemParams struct {
+	CompanyID int64
+	Name      string
+	Sku       string
+	Unit      string
+}
+
+// ============================================================
+// Persediaan (PSAK 202, Stage 4b)
+// ============================================================
+// Item persediaan per perusahaan. SKU opsional (unik bila diisi), sama
+// dengan pola parties.code dan fixed_assets.code.
+func (q *Queries) CreateInventoryItem(ctx context.Context, arg CreateInventoryItemParams) (InventoryItem, error) {
+	row := q.db.QueryRow(ctx, createInventoryItem,
+		arg.CompanyID,
+		arg.Name,
+		arg.Sku,
+		arg.Unit,
+	)
+	var i InventoryItem
+	err := row.Scan(
+		&i.ID,
+		&i.CompanyID,
+		&i.Name,
+		&i.Sku,
+		&i.Unit,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createInventoryMovement = `-- name: CreateInventoryMovement :one
+INSERT INTO inventory_movements (
+    company_id, item_id, date, quantity, unit_cost, movement_type
+) VALUES (
+    $1, $2, $3, $4, $5, $6
+)
+RETURNING id, company_id, item_id, date, quantity, unit_cost, movement_type, created_at
+`
+
+type CreateInventoryMovementParams struct {
+	CompanyID    int64
+	ItemID       int64
+	Date         pgtype.Date
+	Quantity     pgtype.Numeric
+	UnitCost     pgtype.Numeric
+	MovementType InventoryMovementType
+}
+
+// Mutasi stok: 'in' = pembelian (unit_cost = harga beli per satuan),
+// 'out' = pengeluaran (unit_cost disimpan 0; harga pokok dihitung modul
+// dari harga rata-rata tertimbang saat itu).
+func (q *Queries) CreateInventoryMovement(ctx context.Context, arg CreateInventoryMovementParams) (InventoryMovement, error) {
+	row := q.db.QueryRow(ctx, createInventoryMovement,
+		arg.CompanyID,
+		arg.ItemID,
+		arg.Date,
+		arg.Quantity,
+		arg.UnitCost,
+		arg.MovementType,
+	)
+	var i InventoryMovement
+	err := row.Scan(
+		&i.ID,
+		&i.CompanyID,
+		&i.ItemID,
+		&i.Date,
+		&i.Quantity,
+		&i.UnitCost,
+		&i.MovementType,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createInvitation = `-- name: CreateInvitation :one
 
 INSERT INTO invitations (company_id, email, role, token, pin_hash, pin_expires_at, created_by, expires_at)
@@ -2344,6 +2430,105 @@ func (q *Queries) ListFixedAssets(ctx context.Context, companyID int64) ([]Fixed
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listInventoryItems = `-- name: ListInventoryItems :many
+SELECT id, company_id, name, sku, unit, created_at, updated_at
+FROM inventory_items
+WHERE company_id = $1
+ORDER BY name, id
+`
+
+func (q *Queries) ListInventoryItems(ctx context.Context, companyID int64) ([]InventoryItem, error) {
+	rows, err := q.db.Query(ctx, listInventoryItems, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InventoryItem{}
+	for rows.Next() {
+		var i InventoryItem
+		if err := rows.Scan(
+			&i.ID,
+			&i.CompanyID,
+			&i.Name,
+			&i.Sku,
+			&i.Unit,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listInventoryMovements = `-- name: ListInventoryMovements :many
+SELECT
+    m.id, m.company_id, m.item_id, m.date, m.quantity, m.unit_cost, m.movement_type, m.created_at,
+    i.name AS item_name,
+    i.unit AS item_unit
+FROM inventory_movements m
+JOIN inventory_items i ON i.id = m.item_id AND i.company_id = m.company_id
+WHERE m.company_id = $1
+  AND m.date <= $2
+ORDER BY m.date, m.id
+`
+
+type ListInventoryMovementsParams struct {
+	CompanyID int64
+	AsOf      pgtype.Date
+}
+
+type ListInventoryMovementsRow struct {
+	ID           int64
+	CompanyID    int64
+	ItemID       int64
+	Date         pgtype.Date
+	Quantity     pgtype.Numeric
+	UnitCost     pgtype.Numeric
+	MovementType InventoryMovementType
+	CreatedAt    pgtype.Timestamptz
+	ItemName     string
+	ItemUnit     string
+}
+
+// Seluruh mutasi per perusahaan sampai tanggal laporan, berurut tanggal lalu
+// id (urutan pemrosesan rata-rata tertimbang), lengkap dengan nama item untuk
+// tampilan riwayat.
+func (q *Queries) ListInventoryMovements(ctx context.Context, arg ListInventoryMovementsParams) ([]ListInventoryMovementsRow, error) {
+	rows, err := q.db.Query(ctx, listInventoryMovements, arg.CompanyID, arg.AsOf)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListInventoryMovementsRow{}
+	for rows.Next() {
+		var i ListInventoryMovementsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CompanyID,
+			&i.ItemID,
+			&i.Date,
+			&i.Quantity,
+			&i.UnitCost,
+			&i.MovementType,
+			&i.CreatedAt,
+			&i.ItemName,
+			&i.ItemUnit,
 		); err != nil {
 			return nil, err
 		}

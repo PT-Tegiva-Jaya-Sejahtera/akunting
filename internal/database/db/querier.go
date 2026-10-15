@@ -31,6 +31,16 @@ type Querier interface {
 	// sama dengan pola parties.code.
 	CreateFixedAsset(ctx context.Context, arg CreateFixedAssetParams) (FixedAsset, error)
 	// ============================================================
+	// Persediaan (PSAK 202, Stage 4b)
+	// ============================================================
+	// Item persediaan per perusahaan. SKU opsional (unik bila diisi), sama
+	// dengan pola parties.code dan fixed_assets.code.
+	CreateInventoryItem(ctx context.Context, arg CreateInventoryItemParams) (InventoryItem, error)
+	// Mutasi stok: 'in' = pembelian (unit_cost = harga beli per satuan),
+	// 'out' = pengeluaran (unit_cost disimpan 0; harga pokok dihitung modul
+	// dari harga rata-rata tertimbang saat itu).
+	CreateInventoryMovement(ctx context.Context, arg CreateInventoryMovementParams) (InventoryMovement, error)
+	// ============================================================
 	// Undangan pengguna (invite) ke perusahaan
 	// ============================================================
 	CreateInvitation(ctx context.Context, arg CreateInvitationParams) (Invitation, error)
@@ -127,6 +137,11 @@ type Querier interface {
 	// ============================================================
 	ListFiscalPeriods(ctx context.Context, companyID int64) ([]FiscalPeriod, error)
 	ListFixedAssets(ctx context.Context, companyID int64) ([]FixedAsset, error)
+	ListInventoryItems(ctx context.Context, companyID int64) ([]InventoryItem, error)
+	// Seluruh mutasi per perusahaan sampai tanggal laporan, berurut tanggal lalu
+	// id (urutan pemrosesan rata-rata tertimbang), lengkap dengan nama item untuk
+	// tampilan riwayat.
+	ListInventoryMovements(ctx context.Context, arg ListInventoryMovementsParams) ([]ListInventoryMovementsRow, error)
 	ListInvitations(ctx context.Context, companyID int64) ([]Invitation, error)
 	// Kunci jurnal (tanggal dan referensi) untuk mendeteksi import berganda.
 	ListJournalKeys(ctx context.Context, companyID int64) ([]ListJournalKeysRow, error)

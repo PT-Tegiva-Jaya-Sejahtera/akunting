@@ -1,0 +1,246 @@
+package templates
+
+import (
+	"strconv"
+
+	"accounting/internal/database/db"
+	"accounting/internal/models"
+)
+
+// inventoryCell merender satu sel angka persediaan (kosong bila nol) supaya
+// pola selnya sama dengan tabel register aset dan subledger.
+templ inventoryCell(view models.InventoryView, amount int64) {
+	<td class="num px-5 py-2.5 text-right text-ink">
+		if amount != 0 {
+			{ view.Money(amount) }
+		}
+	</td>
+}
+
+// inventoryFootCell merender satu sel angka baris Jumlah (kosong bila nol).
+templ inventoryFootCell(view models.InventoryView, amount int64) {
+	<td class="num px-5 py-2.5 text-right font-semibold text-ink">
+		if amount != 0 {
+			{ view.Money(amount) }
+		}
+	</td>
+}
+
+// inventoryQtyCell merender sel jumlah (selalu tampil, termasuk nol).
+templ inventoryQtyCell(qtyMills int64) {
+	<td class="num px-5 py-2.5 text-right text-label">{ models.FormatQty(qtyMills) }</td>
+}
+
+// InventoryPage adalah halaman persediaan (PSAK 202): daftar item dengan
+// saldo qty, harga rata-rata tertimbang, dan nilai persediaan, riwayat
+// mutasi stok, plus pembanding saldo akun persediaan untuk Neraca.
+templ InventoryPage(shell Shell, company db.Company, view models.InventoryView, errMsg string) {
+	@Layout(shell) {
+		@pageHeader("Persediaan", company.Name+" · per "+view.AsOfLabel) {
+			<a href={ companyPath(company.UrlKey, "/reports/bs") } class={ btnSecondary }>Neraca</a>
+		}
+		if errMsg != "" {
+			@errBox(errMsg)
+		}
+		<form method="get" class={ cardClass + " mt-6 flex flex-wrap items-end gap-4 px-5 py-4" }>
+			@dateField("to", "to", "Tanggal laporan", view.AsOfISO)
+			<button type="submit" class={ btnPrimary }>Tampilkan</button>
+			<span class="text-xs text-muted">Nilai persediaan, harga rata-rata, dan harga pokok ditampilkan dalam Rupiah dan sen</span>
+		</form>
+		if view.CanManage {
+			<div class={ cardClass + " mt-6 px-5 py-5" }>
+				<div class="text-sm font-semibold text-ink">Tambah Item</div>
+				<form
+					method="post"
+					action={ companyPath(company.UrlKey, "/inventory") }
+					class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+				>
+					<div class="lg:col-span-2">
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="inv-name">Nama Item</label>
+						<input id="inv-name" name="name" required placeholder="Kertas A4" class={ inputClass }/>
+					</div>
+					<div>
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="inv-sku">SKU (opsional)</label>
+						<input id="inv-sku" name="sku" placeholder="SKU-A4" class={ inputClass + " num" }/>
+					</div>
+					<div>
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="inv-unit">Satuan</label>
+						<input id="inv-unit" name="unit" placeholder="rim" class={ inputClass }/>
+					</div>
+					<div class="flex items-end">
+						<button type="submit" class={ btnPrimary }>Simpan Item</button>
+					</div>
+				</form>
+			</div>
+			if len(view.Items) > 0 {
+				<div class={ cardClass + " mt-6 px-5 py-5" }>
+					<div class="text-sm font-semibold text-ink">Catat Mutasi Stok</div>
+					<form
+						method="post"
+						action={ companyPath(company.UrlKey, "/inventory/movements") }
+						class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-5"
+					>
+						<div>
+							<label class="mb-1.5 block text-sm font-medium text-ink" for="mv-item">Item</label>
+							<select id="mv-item" name="item_id" required class={ inputClass }>
+								<option value="">Pilih item</option>
+								for _, it := range view.Items {
+									<option value={ strconv.FormatInt(it.ID, 10) }>
+										if it.SKU != "" {
+											{ it.SKU + " · " + it.Name }
+										} else {
+											{ it.Name }
+										}
+									</option>
+								}
+							</select>
+						</div>
+						<div>
+							@dateField("mv-date", "date", "Tanggal", "")
+						</div>
+						<div>
+							<label class="mb-1.5 block text-sm font-medium text-ink" for="mv-type">Jenis</label>
+							<select id="mv-type" name="movement_type" class={ inputClass }>
+								<option value={ models.MovementIn }>Masuk (pembelian)</option>
+								<option value={ models.MovementOut }>Keluar</option>
+							</select>
+						</div>
+						<div>
+							<label class="mb-1.5 block text-sm font-medium text-ink" for="mv-qty">Jumlah</label>
+							<input id="mv-qty" name="quantity" required placeholder="10" class={ inputClass + " num" }/>
+						</div>
+						<div>
+							<label class="mb-1.5 block text-sm font-medium text-ink" for="mv-cost">Harga Satuan (masuk)</label>
+							<input id="mv-cost" name="unit_cost" placeholder="10000" class={ inputClass + " num" }/>
+						</div>
+						<div class="flex items-end">
+							<button type="submit" class={ btnPrimary }>Simpan Mutasi</button>
+						</div>
+					</form>
+					<div class="mt-3 text-xs text-muted">
+						Baris keluar tidak memakai harga satuan isian: barang keluar dinilai dengan
+						harga rata-rata tertimbang saat itu (harga pokok penjualan).
+					</div>
+				</div>
+			}
+		}
+		<div class={ cardClass + " mt-6" }>
+			<div class={ cardTitleClass }>
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<span>Daftar Persediaan</span>
+					<span class="text-xs font-normal text-muted">Nilai persediaan = saldo qty x harga rata-rata tertimbang</span>
+				</div>
+			</div>
+			if len(view.Rows) == 0 {
+				@emptyState("M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z", "Belum ada item persediaan", "Daftarkan item lewat form di atas; harga rata-rata tertimbang dan nilai persediaan dihitung otomatis dari mutasi stok.") {
+				}
+			} else {
+				<div class="overflow-x-auto">
+					<table class="w-full min-w-[840px] text-sm">
+						<thead>
+							<tr class="border-b border-line bg-panel/60">
+								<th class={ thClass }>SKU</th>
+								<th class={ thClass }>Nama Item</th>
+								<th class={ thClass }>Satuan</th>
+								<th class={ thClass + " text-right" }>Saldo Qty</th>
+								<th class={ thClass + " text-right" }>Harga Rata-rata</th>
+								<th class={ thClass + " text-right" }>Nilai Persediaan</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-line">
+							for _, row := range view.Rows {
+								<tr class="transition-colors hover:bg-panel/60">
+									<td class="num px-5 py-2.5 text-label">{ row.SKU }</td>
+									<td class="px-5 py-2.5 text-ink">{ row.Name }</td>
+									<td class="px-5 py-2.5 text-label">{ row.Unit }</td>
+									@inventoryQtyCell(row.QtyMills)
+									@inventoryCell(view, row.AvgCents)
+									<td class="num px-5 py-2.5 text-right font-medium text-ink">{ view.Money(row.ValueCents) }</td>
+								</tr>
+							}
+						</tbody>
+						<tfoot>
+							<tr class="border-t-2 border-line bg-panel/60">
+								<td class="px-5 py-2.5 text-sm font-semibold text-ink" colspan="5">Jumlah Nilai Persediaan</td>
+								<td class="num px-5 py-2.5 text-right font-semibold text-ink">{ view.Money(view.TotalCents) }</td>
+							</tr>
+						</tfoot>
+					</table>
+				</div>
+			}
+		</div>
+		if len(view.Movements) > 0 {
+			<div class={ cardClass + " mt-6" }>
+				<div class={ cardTitleClass }>
+					<div class="flex flex-wrap items-center justify-between gap-3">
+						<span>Mutasi Stok</span>
+						<span class="text-xs font-normal text-muted">Baris keluar dinilai dengan harga rata-rata tertimbang saat itu (COGS)</span>
+					</div>
+				</div>
+				<div class="overflow-x-auto">
+					<table class="w-full min-w-[1080px] text-sm">
+						<thead>
+							<tr class="border-b border-line bg-panel/60">
+								<th class={ thClass }>Tanggal</th>
+								<th class={ thClass }>Item</th>
+								<th class={ thClass }>Jenis</th>
+								<th class={ thClass + " text-right" }>Jumlah</th>
+								<th class={ thClass + " text-right" }>Harga Satuan</th>
+								<th class={ thClass + " text-right" }>Nilai Mutasi</th>
+								<th class={ thClass + " text-right" }>Saldo Qty</th>
+								<th class={ thClass + " text-right" }>Harga Rata-rata</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-line">
+							for _, mv := range view.Movements {
+								<tr class="transition-colors hover:bg-panel/60">
+									<td class="num px-5 py-2.5 text-label">{ mv.DateLabel }</td>
+									<td class="px-5 py-2.5 text-ink">{ mv.ItemName }</td>
+									<td class="px-5 py-2.5 text-label">{ mv.TypeLabel }</td>
+									@inventoryQtyCell(mv.QtyMills)
+									@inventoryCell(view, mv.AppliedCostCents)
+									@inventoryCell(view, mv.ValueCents)
+									@inventoryQtyCell(mv.BalanceQtyMills)
+									@inventoryCell(view, mv.BalanceAvgCents)
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			</div>
+		}
+		<div class={ cardClass + " mt-6" }>
+			<div class={ cardTitleClass }>
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<span>Rekomendasi untuk Neraca</span>
+					<span class="text-xs font-normal text-muted">Jurnal pembelian dan penjualan dibuat manual; modul hanya menghitung rekomendasi angkanya</span>
+				</div>
+			</div>
+			<div class="overflow-x-auto">
+				<table class="w-full min-w-[720px] text-sm">
+					<thead>
+						<tr class="border-b border-line bg-panel/60">
+							<th class={ thClass }>Pos</th>
+							<th class={ thClass + " text-right" }>Menurut Register (Rekomendasi)</th>
+							<th class={ thClass + " text-right" }>Menurut Buku Besar (Akun COA)</th>
+							<th class={ thClass + " text-right" }>Selisih</th>
+						</tr>
+					</thead>
+					<tbody class="divide-y divide-line">
+						<tr class="transition-colors hover:bg-panel/60">
+							<td class="px-5 py-2.5 text-sm font-semibold text-ink">Nilai persediaan (aset lancar di Neraca)</td>
+							<td class="num px-5 py-2.5 text-right font-semibold text-ink">{ view.Money(view.TotalCents) }</td>
+							<td class="num px-5 py-2.5 text-right font-semibold text-ink">{ view.Money(view.Buku.LedgerCents) }</td>
+							<td class="num px-5 py-2.5 text-right font-semibold text-ink">{ view.Money(view.TotalCents-view.Buku.LedgerCents) }</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+			<div class="border-t border-line px-5 py-3 text-xs text-muted">
+				Nilai persediaan di Neraca berasal dari akun persediaan di COA yang diisi lewat
+				jurnal manual. Kolom rekomendasi adalah angka register (saldo qty x harga
+				rata-rata tertimbang) untuk jurnal penyesuaian persediaan.
+			</div>
+		</div>
+	}
+}

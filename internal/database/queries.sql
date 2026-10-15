@@ -856,3 +856,48 @@ UPDATE fixed_assets
 SET is_active = @is_active,
     updated_at = now()
 WHERE id = @id AND company_id = @company_id;
+
+-- ============================================================
+-- Persediaan (PSAK 202, Stage 4b)
+-- ============================================================
+
+-- Item persediaan per perusahaan. SKU opsional (unik bila diisi), sama
+-- dengan pola parties.code dan fixed_assets.code.
+-- name: CreateInventoryItem :one
+INSERT INTO inventory_items (
+    company_id, name, sku, unit
+) VALUES (
+    @company_id, @name, @sku, @unit
+)
+RETURNING *;
+
+-- name: ListInventoryItems :many
+SELECT *
+FROM inventory_items
+WHERE company_id = @company_id
+ORDER BY name, id;
+
+-- Mutasi stok: 'in' = pembelian (unit_cost = harga beli per satuan),
+-- 'out' = pengeluaran (unit_cost disimpan 0; harga pokok dihitung modul
+-- dari harga rata-rata tertimbang saat itu).
+-- name: CreateInventoryMovement :one
+INSERT INTO inventory_movements (
+    company_id, item_id, date, quantity, unit_cost, movement_type
+) VALUES (
+    @company_id, @item_id, @date, @quantity, @unit_cost, @movement_type
+)
+RETURNING *;
+
+-- Seluruh mutasi per perusahaan sampai tanggal laporan, berurut tanggal lalu
+-- id (urutan pemrosesan rata-rata tertimbang), lengkap dengan nama item untuk
+-- tampilan riwayat.
+-- name: ListInventoryMovements :many
+SELECT
+    m.*,
+    i.name AS item_name,
+    i.unit AS item_unit
+FROM inventory_movements m
+JOIN inventory_items i ON i.id = m.item_id AND i.company_id = m.company_id
+WHERE m.company_id = @company_id
+  AND m.date <= @as_of
+ORDER BY m.date, m.id;

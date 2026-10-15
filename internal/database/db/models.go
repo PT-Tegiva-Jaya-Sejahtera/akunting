@@ -141,6 +141,48 @@ func (ns NullFixedAssetMethod) Value() (driver.Value, error) {
 	return string(ns.FixedAssetMethod), nil
 }
 
+type InventoryMovementType string
+
+const (
+	InventoryMovementTypeIn  InventoryMovementType = "in"
+	InventoryMovementTypeOut InventoryMovementType = "out"
+)
+
+func (e *InventoryMovementType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = InventoryMovementType(s)
+	case string:
+		*e = InventoryMovementType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for InventoryMovementType: %T", src)
+	}
+	return nil
+}
+
+type NullInventoryMovementType struct {
+	InventoryMovementType InventoryMovementType
+	Valid                 bool // Valid is true if InventoryMovementType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullInventoryMovementType) Scan(value interface{}) error {
+	if value == nil {
+		ns.InventoryMovementType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.InventoryMovementType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullInventoryMovementType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.InventoryMovementType), nil
+}
+
 type InvitationStatus string
 
 const (
@@ -503,6 +545,27 @@ type FixedAsset struct {
 	IsActive        bool
 	CreatedAt       pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
+}
+
+type InventoryItem struct {
+	ID        int64
+	CompanyID int64
+	Name      string
+	Sku       string
+	Unit      string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+type InventoryMovement struct {
+	ID           int64
+	CompanyID    int64
+	ItemID       int64
+	Date         pgtype.Date
+	Quantity     pgtype.Numeric
+	UnitCost     pgtype.Numeric
+	MovementType InventoryMovementType
+	CreatedAt    pgtype.Timestamptz
 }
 
 type Invitation struct {
