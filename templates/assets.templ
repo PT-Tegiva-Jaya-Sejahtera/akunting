@@ -1,0 +1,219 @@
+package templates
+
+import (
+	"strconv"
+
+	"accounting/internal/database/db"
+	"accounting/internal/models"
+)
+
+// assetMethodOptions merender pilihan metode depresiasi aset tetap.
+templ assetMethodOptions(current string) {
+	<option value={ models.MethodStraightLine } selected?={ current == models.MethodStraightLine }>Garis lurus</option>
+	<option value={ models.MethodDeclining } selected?={ current == models.MethodDeclining }>Saldo menurun</option>
+}
+
+// assetCell merender satu sel angka register aset (kosong bila nol) supaya
+// pola selnya sama dengan tabel subledger.
+templ assetCell(view models.AssetsView, amount int64) {
+	<td class="num px-5 py-2.5 text-right text-ink">
+		if amount != 0 {
+			{ view.Money(amount) }
+		}
+	</td>
+}
+
+// assetFootCell merender satu sel angka baris Jumlah (kosong bila nol).
+templ assetFootCell(view models.AssetsView, amount int64) {
+	<td class="num px-5 py-2.5 text-right font-semibold text-ink">
+		if amount != 0 {
+			{ view.Money(amount) }
+		}
+	</td>
+}
+
+// AssetsPage adalah register aset tetap (PSAK 216): daftar aset dengan harga
+// perolehan, akumulasi depresiasi, dan nilai buku per tanggal laporan, plus
+// pembanding saldo akun COA untuk Neraca.
+templ AssetsPage(shell Shell, company db.Company, view models.AssetsView, errMsg string) {
+	@Layout(shell) {
+		@pageHeader("Aset Tetap", company.Name+" · per "+view.AsOfLabel) {
+			<a href={ companyPath(company.UrlKey, "/reports/bs") } class={ btnSecondary }>Neraca</a>
+		}
+		if errMsg != "" {
+			@errBox(errMsg)
+		}
+		<form method="get" class={ cardClass + " mt-6 flex flex-wrap items-end gap-4 px-5 py-4" }>
+			@dateField("to", "to", "Tanggal laporan", view.AsOfISO)
+			<button type="submit" class={ btnPrimary }>Tampilkan</button>
+			<span class="text-xs text-muted">{ view.RoundingLabel }</span>
+		</form>
+		if view.CanManage {
+			<div class={ cardClass + " mt-6 px-5 py-5" }>
+				<div class="text-sm font-semibold text-ink">Tambah Aset</div>
+				<form
+					method="post"
+					action={ companyPath(company.UrlKey, "/assets") }
+					class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+				>
+					<div class="lg:col-span-2">
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="name">Nama Aset</label>
+						<input id="name" name="name" required placeholder="Kendaraan Operasional" class={ inputClass }/>
+					</div>
+					<div>
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="code">Kode (opsional)</label>
+						<input id="code" name="code" placeholder="A-001" class={ inputClass + " num" }/>
+					</div>
+					<div>
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="cost">Harga Perolehan</label>
+						<input id="cost" name="cost" required placeholder="250000" class={ inputClass + " num" }/>
+					</div>
+					<div>
+						@dateField("acquisition_date", "acquisition_date", "Tanggal Perolehan", "")
+					</div>
+					<div>
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="useful_life_years">Masa Manfaat (tahun)</label>
+						<input id="useful_life_years" name="useful_life_years" required placeholder="4" class={ inputClass + " num" }/>
+					</div>
+					<div>
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="residual_value">Nilai Residu</label>
+						<input id="residual_value" name="residual_value" placeholder="0" class={ inputClass + " num" }/>
+					</div>
+					<div>
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="method">Metode</label>
+						<select id="method" name="method" class={ inputClass }>
+							@assetMethodOptions(models.MethodStraightLine)
+						</select>
+					</div>
+					<div class="flex items-end">
+						<button type="submit" class={ btnPrimary }>Simpan Aset</button>
+					</div>
+				</form>
+			</div>
+		}
+		<div class={ cardClass + " mt-6" }>
+			<div class={ cardTitleClass }>
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<span>Register Aset Tetap</span>
+					<span class="text-xs font-normal text-muted">Depresiasi dihitung per bulan penuh sejak tanggal perolehan</span>
+				</div>
+			</div>
+			if len(view.Rows) == 0 {
+				@emptyState("M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z", "Belum ada aset tetap", "Daftarkan aset lewat form di atas; depresiasi, akumulasi, dan nilai buku dihitung otomatis per tanggal laporan.") {
+				}
+			} else {
+				<div class="overflow-x-auto">
+					<table class="w-full min-w-[1080px] text-sm">
+						<thead>
+							<tr class="border-b border-line bg-panel/60">
+								<th class={ thClass }>Kode</th>
+								<th class={ thClass }>Nama Aset</th>
+								<th class={ thClass }>Tanggal Perolehan</th>
+								<th class={ thClass }>Metode</th>
+								<th class={ thClass + " text-right" }>Masa Manfaat</th>
+								<th class={ thClass + " text-right" }>Harga Perolehan</th>
+								<th class={ thClass + " text-right" }>Akumulasi Penyusutan</th>
+								<th class={ thClass + " text-right" }>Nilai Buku</th>
+								<th class={ thClass }>Status</th>
+								if view.CanManage {
+									<th class={ thClass }>Aksi</th>
+								}
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-line">
+							for _, row := range view.Rows {
+								<tr class="transition-colors hover:bg-panel/60">
+									<td class="num px-5 py-2.5 text-label">{ row.Code }</td>
+									<td class="px-5 py-2.5 text-ink">{ row.Name }</td>
+									<td class="num px-5 py-2.5 text-label">{ row.AcqLabel }</td>
+									<td class="px-5 py-2.5 text-label">{ row.MethodLabel }</td>
+									<td class="num px-5 py-2.5 text-right text-label">{ strconv.Itoa(row.UsefulLifeYears) } tahun</td>
+									@assetCell(view, row.CostCents)
+									@assetCell(view, row.AccumulatedCents)
+									<td class="num px-5 py-2.5 text-right font-medium text-ink">{ view.Money(row.BookCents) }</td>
+									<td class="px-5 py-2.5 text-label">
+										if row.IsActive {
+											Aktif
+										} else {
+											Nonaktif
+										}
+									</td>
+									if view.CanManage {
+										<td class="px-5 py-2.5">
+											<form method="post" action={ companyPath(company.UrlKey, "/assets/"+strconv.FormatInt(row.ID, 10)) }>
+												if row.IsActive {
+													<input type="hidden" name="is_active" value="0"/>
+													<button type="submit" class={ btnGhost }>Nonaktifkan</button>
+												} else {
+													<input type="hidden" name="is_active" value="1"/>
+													<button type="submit" class={ btnGhost }>Aktifkan</button>
+												}
+											</form>
+										</td>
+									}
+								</tr>
+							}
+						</tbody>
+						<tfoot>
+							<tr class="border-t-2 border-line bg-panel/60">
+								<td class="px-5 py-2.5 text-sm font-semibold text-ink" colspan="5">Jumlah Aset Tetap</td>
+								@assetFootCell(view, view.Total.CostCents)
+								@assetFootCell(view, view.Total.AccumulatedCents)
+								<td class="num px-5 py-2.5 text-right font-semibold text-ink">{ view.Money(view.Total.BookCents) }</td>
+								<td></td>
+								if view.CanManage {
+									<td></td>
+								}
+							</tr>
+						</tfoot>
+					</table>
+				</div>
+			}
+		</div>
+		<div class={ cardClass + " mt-6" }>
+			<div class={ cardTitleClass }>
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<span>Rekomendasi untuk Neraca</span>
+					<span class="text-xs font-normal text-muted">Jurnal depresiasi dibuat manual; modul hanya menghitung rekomendasi angkanya</span>
+				</div>
+			</div>
+			<div class="overflow-x-auto">
+				<table class="w-full min-w-[720px] text-sm">
+					<thead>
+						<tr class="border-b border-line bg-panel/60">
+							<th class={ thClass }>Pos</th>
+							<th class={ thClass + " text-right" }>Menurut Register (Rekomendasi)</th>
+							<th class={ thClass + " text-right" }>Menurut Buku Besar (Akun COA)</th>
+							<th class={ thClass + " text-right" }>Selisih</th>
+						</tr>
+					</thead>
+					<tbody class="divide-y divide-line">
+						<tr class="transition-colors hover:bg-panel/60">
+							<td class="px-5 py-2.5 text-label">Harga perolehan (akun aset tetap)</td>
+							@assetCell(view, view.Total.CostCents)
+							@assetCell(view, view.Buku.CostCents)
+							@assetCell(view, view.Total.CostCents-view.Buku.CostCents)
+						</tr>
+						<tr class="transition-colors hover:bg-panel/60">
+							<td class="px-5 py-2.5 text-label">Akumulasi penyusutan</td>
+							@assetCell(view, view.Total.AccumulatedCents)
+							@assetCell(view, view.Buku.AccumCents)
+							@assetCell(view, view.Total.AccumulatedCents-view.Buku.AccumCents)
+						</tr>
+						<tr class="transition-colors hover:bg-panel/60">
+							<td class="px-5 py-2.5 text-sm font-semibold text-ink">Nilai buku (aset tidak lancar di Neraca)</td>
+							<td class="num px-5 py-2.5 text-right font-semibold text-ink">{ view.Money(view.Total.BookCents) }</td>
+							<td class="num px-5 py-2.5 text-right font-semibold text-ink">{ view.Money(view.Buku.BookCents) }</td>
+							<td class="num px-5 py-2.5 text-right font-semibold text-ink">{ view.Money(view.Total.BookCents-view.Buku.BookCents) }</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+			<div class="border-t border-line px-5 py-3 text-xs text-muted">
+				Nilai buku aset tetap di Neraca berasal dari akun aset tetap dan akumulasi
+				penyusutan di COA yang diisi lewat jurnal manual. Kolom rekomendasi adalah
+				angka yang disarankan modul ini untuk jurnal penyesuaian depresiasi.
+			</div>
+		</div>
+	}
+}

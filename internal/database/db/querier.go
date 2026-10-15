@@ -25,6 +25,12 @@ type Querier interface {
 	CreateCompany(ctx context.Context, arg CreateCompanyParams) (Company, error)
 	CreateFiscalPeriod(ctx context.Context, arg CreateFiscalPeriodParams) (FiscalPeriod, error)
 	// ============================================================
+	// Aset tetap (PSAK 216, Stage 4a)
+	// ============================================================
+	// Register aset tetap per perusahaan. Kode aset opsional (unik bila diisi),
+	// sama dengan pola parties.code.
+	CreateFixedAsset(ctx context.Context, arg CreateFixedAssetParams) (FixedAsset, error)
+	// ============================================================
 	// Undangan pengguna (invite) ke perusahaan
 	// ============================================================
 	CreateInvitation(ctx context.Context, arg CreateInvitationParams) (Invitation, error)
@@ -120,6 +126,7 @@ type Querier interface {
 	// PSAK 201: periode akuntansi, saldo awal, dan jurnal penutup
 	// ============================================================
 	ListFiscalPeriods(ctx context.Context, companyID int64) ([]FiscalPeriod, error)
+	ListFixedAssets(ctx context.Context, companyID int64) ([]FixedAsset, error)
 	ListInvitations(ctx context.Context, companyID int64) ([]Invitation, error)
 	// Kunci jurnal (tanggal dan referensi) untuk mendeteksi import berganda.
 	ListJournalKeys(ctx context.Context, companyID int64) ([]ListJournalKeysRow, error)
@@ -160,6 +167,7 @@ type Querier interface {
 	MonthlyProfitLoss(ctx context.Context, arg MonthlyProfitLossParams) ([]MonthlyProfitLossRow, error)
 	ReopenFiscalPeriod(ctx context.Context, arg ReopenFiscalPeriodParams) (int64, error)
 	RevokeCompanyAccess(ctx context.Context, arg RevokeCompanyAccessParams) error
+	SetFixedAssetActive(ctx context.Context, arg SetFixedAssetActiveParams) (int64, error)
 	TouchSession(ctx context.Context, id pgtype.UUID) error
 	// ============================================================
 	// Manajemen user dan peran per perusahaan (owner/admin/staff)

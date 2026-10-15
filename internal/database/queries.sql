@@ -828,3 +828,31 @@ WHERE j.company_id = @company_id
   AND a.is_payable
 GROUP BY j.id, p.id, p.name, j.reference, j.journal_date, j.due_date
 ORDER BY j.journal_date, j.id;
+
+-- ============================================================
+-- Aset tetap (PSAK 216, Stage 4a)
+-- ============================================================
+
+-- Register aset tetap per perusahaan. Kode aset opsional (unik bila diisi),
+-- sama dengan pola parties.code.
+-- name: CreateFixedAsset :one
+INSERT INTO fixed_assets (
+    company_id, name, code, cost, acquisition_date,
+    useful_life_years, residual_value, method, is_active
+) VALUES (
+    @company_id, @name, @code, @cost, @acquisition_date,
+    @useful_life_years, @residual_value, @method, @is_active
+)
+RETURNING *;
+
+-- name: ListFixedAssets :many
+SELECT *
+FROM fixed_assets
+WHERE company_id = @company_id
+ORDER BY acquisition_date, code, id;
+
+-- name: SetFixedAssetActive :execrows
+UPDATE fixed_assets
+SET is_active = @is_active,
+    updated_at = now()
+WHERE id = @id AND company_id = @company_id;

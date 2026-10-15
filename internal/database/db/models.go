@@ -99,6 +99,48 @@ func (ns NullCompanyRole) Value() (driver.Value, error) {
 	return string(ns.CompanyRole), nil
 }
 
+type FixedAssetMethod string
+
+const (
+	FixedAssetMethodStraightLine     FixedAssetMethod = "straight_line"
+	FixedAssetMethodDecliningBalance FixedAssetMethod = "declining_balance"
+)
+
+func (e *FixedAssetMethod) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = FixedAssetMethod(s)
+	case string:
+		*e = FixedAssetMethod(s)
+	default:
+		return fmt.Errorf("unsupported scan type for FixedAssetMethod: %T", src)
+	}
+	return nil
+}
+
+type NullFixedAssetMethod struct {
+	FixedAssetMethod FixedAssetMethod
+	Valid            bool // Valid is true if FixedAssetMethod is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullFixedAssetMethod) Scan(value interface{}) error {
+	if value == nil {
+		ns.FixedAssetMethod, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.FixedAssetMethod.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullFixedAssetMethod) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.FixedAssetMethod), nil
+}
+
 type InvitationStatus string
 
 const (
@@ -446,6 +488,21 @@ type FiscalPeriod struct {
 	ClosedAt  pgtype.Timestamptz
 	ClosedBy  pgtype.Int8
 	CreatedAt pgtype.Timestamptz
+}
+
+type FixedAsset struct {
+	ID              int64
+	CompanyID       int64
+	Name            string
+	Code            string
+	Cost            pgtype.Numeric
+	AcquisitionDate pgtype.Date
+	UsefulLifeYears int32
+	ResidualValue   pgtype.Numeric
+	Method          FixedAssetMethod
+	IsActive        bool
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
 }
 
 type Invitation struct {

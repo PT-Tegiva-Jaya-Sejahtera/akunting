@@ -187,6 +187,7 @@ func newRouter(pool *pgxpool.Pool, queries *db.Queries, h *handlers.Handlers) ht
 			r.Get("/ledger", h.LedgerGet)
 			r.Get("/receivables", h.ReceivablesGet)
 			r.Get("/payables", h.PayablesGet)
+			r.Get("/assets", h.AssetsGet)
 			r.Get("/adjustments", h.AdjustmentsGet)
 			r.Get("/worksheet", h.WorksheetGet)
 			r.Get("/exchange", h.ExchangeGet)
@@ -220,6 +221,10 @@ func newRouter(pool *pgxpool.Pool, queries *db.Queries, h *handlers.Handlers) ht
 				r.Get("/accounts", h.AccountsGet)
 				r.Post("/accounts", h.AccountCreatePost)
 				r.Post("/accounts/{accountID}", h.AccountUpdatePost)
+
+				// Register aset tetap (PSAK 216): kelola master data aset.
+				r.Post("/assets", h.AssetsCreatePost)
+				r.Post("/assets/{assetID}", h.AssetsTogglePost)
 
 				// Import akun (exchange) = operasi admin, sama seperti CRUD akun.
 				r.Post("/exchange/import", h.ExchangeImportPost)

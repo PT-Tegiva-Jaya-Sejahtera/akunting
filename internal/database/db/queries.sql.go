@@ -210,6 +210,65 @@ func (q *Queries) CreateFiscalPeriod(ctx context.Context, arg CreateFiscalPeriod
 	return i, err
 }
 
+const createFixedAsset = `-- name: CreateFixedAsset :one
+
+INSERT INTO fixed_assets (
+    company_id, name, code, cost, acquisition_date,
+    useful_life_years, residual_value, method, is_active
+) VALUES (
+    $1, $2, $3, $4, $5,
+    $6, $7, $8, $9
+)
+RETURNING id, company_id, name, code, cost, acquisition_date, useful_life_years, residual_value, method, is_active, created_at, updated_at
+`
+
+type CreateFixedAssetParams struct {
+	CompanyID       int64
+	Name            string
+	Code            string
+	Cost            pgtype.Numeric
+	AcquisitionDate pgtype.Date
+	UsefulLifeYears int32
+	ResidualValue   pgtype.Numeric
+	Method          FixedAssetMethod
+	IsActive        bool
+}
+
+// ============================================================
+// Aset tetap (PSAK 216, Stage 4a)
+// ============================================================
+// Register aset tetap per perusahaan. Kode aset opsional (unik bila diisi),
+// sama dengan pola parties.code.
+func (q *Queries) CreateFixedAsset(ctx context.Context, arg CreateFixedAssetParams) (FixedAsset, error) {
+	row := q.db.QueryRow(ctx, createFixedAsset,
+		arg.CompanyID,
+		arg.Name,
+		arg.Code,
+		arg.Cost,
+		arg.AcquisitionDate,
+		arg.UsefulLifeYears,
+		arg.ResidualValue,
+		arg.Method,
+		arg.IsActive,
+	)
+	var i FixedAsset
+	err := row.Scan(
+		&i.ID,
+		&i.CompanyID,
+		&i.Name,
+		&i.Code,
+		&i.Cost,
+		&i.AcquisitionDate,
+		&i.UsefulLifeYears,
+		&i.ResidualValue,
+		&i.Method,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createInvitation = `-- name: CreateInvitation :one
 
 INSERT INTO invitations (company_id, email, role, token, pin_hash, pin_expires_at, created_by, expires_at)
@@ -2256,6 +2315,46 @@ func (q *Queries) ListFiscalPeriods(ctx context.Context, companyID int64) ([]Fis
 	return items, nil
 }
 
+const listFixedAssets = `-- name: ListFixedAssets :many
+SELECT id, company_id, name, code, cost, acquisition_date, useful_life_years, residual_value, method, is_active, created_at, updated_at
+FROM fixed_assets
+WHERE company_id = $1
+ORDER BY acquisition_date, code, id
+`
+
+func (q *Queries) ListFixedAssets(ctx context.Context, companyID int64) ([]FixedAsset, error) {
+	rows, err := q.db.Query(ctx, listFixedAssets, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FixedAsset{}
+	for rows.Next() {
+		var i FixedAsset
+		if err := rows.Scan(
+			&i.ID,
+			&i.CompanyID,
+			&i.Name,
+			&i.Code,
+			&i.Cost,
+			&i.AcquisitionDate,
+			&i.UsefulLifeYears,
+			&i.ResidualValue,
+			&i.Method,
+			&i.IsActive,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listInvitations = `-- name: ListInvitations :many
 SELECT id, company_id, email, role, token, status, created_by, created_at, expires_at, used_at, used_user_id, pin_hash, pin_expires_at, pin_attempts
 FROM invitations
@@ -2753,6 +2852,27 @@ type RevokeCompanyAccessParams struct {
 func (q *Queries) RevokeCompanyAccess(ctx context.Context, arg RevokeCompanyAccessParams) error {
 	_, err := q.db.Exec(ctx, revokeCompanyAccess, arg.CompanyID, arg.UserID)
 	return err
+}
+
+const setFixedAssetActive = `-- name: SetFixedAssetActive :execrows
+UPDATE fixed_assets
+SET is_active = $1,
+    updated_at = now()
+WHERE id = $2 AND company_id = $3
+`
+
+type SetFixedAssetActiveParams struct {
+	IsActive  bool
+	ID        int64
+	CompanyID int64
+}
+
+func (q *Queries) SetFixedAssetActive(ctx context.Context, arg SetFixedAssetActiveParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setFixedAssetActive, arg.IsActive, arg.ID, arg.CompanyID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const touchSession = `-- name: TouchSession :exec
