@@ -47,3 +47,32 @@ func CompanyKeyValid(key string) bool {
 	}
 	return true
 }
+
+// SlugifyName mengubah nama perusahaan menjadi slug URL: huruf kecil ASCII,
+// pemisah tanda hubung, tanpa karakter lain. Nama Indonesia umumnya cukup;
+// huruf non-ASCII (mis. é) dibuang setelah diterjemahkan seperlunya.
+// Hasil kosong jatuh ke "perusahaan".
+func SlugifyName(name string) string {
+	var b strings.Builder
+	lastDash := true
+	for _, r := range strings.ToLower(name) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			lastDash = false
+		default:
+			if !lastDash {
+				b.WriteByte('-')
+				lastDash = true
+			}
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if len(out) > 48 {
+		out = strings.TrimSuffix(out[:48], "-")
+	}
+	if out == "" {
+		return "perusahaan"
+	}
+	return out
+}

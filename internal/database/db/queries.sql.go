@@ -50,6 +50,17 @@ func (q *Queries) CloseFiscalPeriod(ctx context.Context, arg CloseFiscalPeriodPa
 	return result.RowsAffected(), nil
 }
 
+const countActiveUsers = `-- name: CountActiveUsers :one
+SELECT count(*)::bigint AS total FROM users WHERE is_active = TRUE
+`
+
+func (q *Queries) CountActiveUsers(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveUsers)
+	var total int64
+	err := row.Scan(&total)
+	return total, err
+}
+
 const countCompanyOwners = `-- name: CountCompanyOwners :one
 SELECT COUNT(*)::BIGINT AS owner_count
 FROM company_users
@@ -261,6 +272,41 @@ func (q *Queries) CreateCompany(ctx context.Context, arg CreateCompanyParams) (C
 		&i.UrlKey,
 		&i.Pillar,
 		&i.TaxRate,
+	)
+	return i, err
+}
+
+const createFirstUser = `-- name: CreateFirstUser :one
+INSERT INTO users (username, password_hash, full_name)
+SELECT $1, $2, $3
+WHERE NOT EXISTS (SELECT 1 FROM users)
+RETURNING id, username, password_hash, full_name, is_active, created_at, updated_at, last_activity_at, email, phone, birth_date
+`
+
+type CreateFirstUserParams struct {
+	Username     string
+	PasswordHash string
+	FullName     string
+}
+
+// Penjaga atomic: hanya membuat baris bila tabel users masih kosong, jadi
+// dua request yang datang hampir bersamaan tidak bisa membuat dua akun
+// pertama. Dipakai halaman setup pertama (first-run).
+func (q *Queries) CreateFirstUser(ctx context.Context, arg CreateFirstUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, createFirstUser, arg.Username, arg.PasswordHash, arg.FullName)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.PasswordHash,
+		&i.FullName,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastActivityAt,
+		&i.Email,
+		&i.Phone,
+		&i.BirthDate,
 	)
 	return i, err
 }

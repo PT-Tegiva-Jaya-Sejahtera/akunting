@@ -13,6 +13,7 @@ import (
 type Querier interface {
 	CancelInvitation(ctx context.Context, arg CancelInvitationParams) (int64, error)
 	CloseFiscalPeriod(ctx context.Context, arg CloseFiscalPeriodParams) (int64, error)
+	CountActiveUsers(ctx context.Context) (int64, error)
 	CountCompanyOwners(ctx context.Context, companyID int64) (int64, error)
 	CountDuplicateStatementLines(ctx context.Context, arg CountDuplicateStatementLinesParams) ([]CountDuplicateStatementLinesRow, error)
 	CountJournals(ctx context.Context, companyID int64) (int64, error)
@@ -28,6 +29,10 @@ type Querier interface {
 	// ============================================================
 	CreateBankAccount(ctx context.Context, arg CreateBankAccountParams) (BankAccount, error)
 	CreateCompany(ctx context.Context, arg CreateCompanyParams) (Company, error)
+	// Penjaga atomic: hanya membuat baris bila tabel users masih kosong, jadi
+	// dua request yang datang hampir bersamaan tidak bisa membuat dua akun
+	// pertama. Dipakai halaman setup pertama (first-run).
+	CreateFirstUser(ctx context.Context, arg CreateFirstUserParams) (User, error)
 	CreateFiscalPeriod(ctx context.Context, arg CreateFiscalPeriodParams) (FiscalPeriod, error)
 	// ============================================================
 	// Aset tetap (PSAK 216, Stage 4a)

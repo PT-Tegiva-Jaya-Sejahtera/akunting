@@ -18,6 +18,14 @@ scripts/quickstart.sh
 
 Script mengerjakan semua: buat database `akunting`, terapkan seluruh migrasi berurutan, build binary `bin/akunting`, tulis konfigurasi di `~/.config/akunting/akunting.env`, pasang dan menyalakan systemd user unit `akunting.service` (auto-restart), mengaktifkan `tailscale serve` (HTTPS), lalu menutup dengan health check. URL final dicetak di akhir.
 
+## Langkah pertama setelah install
+
+1. Buka URL aplikasi (http://127.0.0.1:8080 atau HTTPS Tailscale yang dicetak script). Karena belum ada pengguna, aplikasi otomatis mengarahkan ke halaman "Buat Akun Pertama" (`/setup`).
+2. Isi nama lengkap, username, dan password. Akun pertama ini yang nanti membuat pembukuan, mengundang pengguna lain lewat Pengaturan perusahaan, dan mengimpor data lewat menu Pertukaran Data.
+3. Setelah login, klik kartu "Tambah pembukuan baru" untuk membuat pembukuan pertama; kamu otomatis menjadi owner pembukuannya.
+4. Tambah pengguna lain: masuk ke pembukuan lalu Pengaturan perusahaan > Undang Pengguna (tautan undangan + kode verifikasi 6 digit).
+5. Data dari aplikasi lain masuk lewat menu Pertukaran Data (unggah CSV/XLSX, pratinjau, konfirmasi; import bersifat tambah saja).
+
 ## Variasi
 
 1. Port dan nama database: `AKUNTING_PORT=9000 AKUNTING_DB=akunting_cabang scripts/quickstart.sh`

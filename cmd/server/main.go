@@ -171,6 +171,11 @@ func newRouter(pool *pgxpool.Pool, queries *db.Queries, h *handlers.Handlers) ht
 	r.Post("/login", h.LoginPost)
 	r.Post("/logout", h.LogoutPost)
 
+	// First-run setup: membuat akun pertama. Rute ini hidup hanya selama
+	// database belum punya pengguna; setelah itu mengalihkan ke /login.
+	r.Get("/setup", h.SetupGet)
+	r.Post("/setup", h.SetupPost)
+
 	// Penerimaan undangan: publik, dijaga token di URL.
 	r.Get("/invitations/{token}", h.InvitationAcceptGet)
 	r.Post("/invitations/{token}", h.InvitationAcceptPost)
@@ -182,6 +187,7 @@ func newRouter(pool *pgxpool.Pool, queries *db.Queries, h *handlers.Handlers) ht
 		r.Use(appmw.RequireAuth(queries, h.CookieSecure))
 
 		r.Get("/", h.HomeGet)
+		r.Post("/companies", h.CompanyCreatePost)
 
 		// Profil pengguna: berlaku lintas perusahaan, tidak perlu cakupan
 		// perusahaan karena hanya menyangkut akun sendiri.

@@ -193,3 +193,7 @@ fi
 echo "    Database : $DB_NAME"
 echo "    Service  : systemctl --user status|restart|stop akunting ; log: journalctl --user -u akunting -f"
 echo
+echo "  Langkah pertama: buka URL di atas; bila belum ada pengguna, aplikasi"
+echo "  mengarahkan ke halaman Buat Akun Pertama (/setup). Akun pertama membuat"
+echo "  pembukuan lewat kartu 'Tambah pembukuan baru', lalu mengundang pengguna"
+echo "  lain dari Pengaturan perusahaan dan mengimpor data dari Pertukaran Data."

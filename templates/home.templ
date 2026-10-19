@@ -10,7 +10,7 @@ import (
 
 // HomePage adalah pemilih perusahaan: kartu besar berisi ringkasan
 // jumlah pengguna, aktivitas terakhir, dan posisi aset.
-templ HomePage(shell Shell, companies []db.ListCompaniesForUserWithStatsRow) {
+templ HomePage(shell Shell, companies []db.ListCompaniesForUserWithStatsRow, errMsg string) {
 	@Layout(shell) {
 		<div class="flex flex-wrap items-end justify-between gap-4">
 			<div class="min-w-0">
@@ -21,6 +21,9 @@ templ HomePage(shell Shell, companies []db.ListCompaniesForUserWithStatsRow) {
 				</div>
 			</div>
 		</div>
+		if errMsg != "" {
+			<div class="mt-4 rounded-input border border-danger/40 bg-danger/5 px-5 py-3 text-sm text-danger">{ errMsg }</div>
+		}
 		// Empat kartu per baris pada layar lebar; kartu terakhir selalu
 		// ditempati tombol "Tambah pembukuan baru".
 		<div class="mt-8 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
@@ -64,7 +67,7 @@ templ HomePage(shell Shell, companies []db.ListCompaniesForUserWithStatsRow) {
 					</div>
 				</a>
 			}
-			@newCompanyCard()
+			@newCompanyCard(len(companies) == 0)
 		</div>
 	}
 }
@@ -83,19 +86,53 @@ templ homeStat(label string, value string, tebal bool) {
 }
 
 // newCompanyCard adalah kartu terakhir pada halaman pemilihan pembukuan untuk
-// menambah pembukuan baru. Untuk sementara belum ada aksi di baliknya.
-templ newCompanyCard() {
-	<button
-		type="button"
-		class="group flex min-h-[220px] w-full flex-col items-center justify-center gap-3 rounded-card border-2 border-dashed border-line bg-white/60 px-6 py-8 text-center transition-all hover:border-accent-soft hover:bg-accent-wash focus:outline-none focus-visible:ring-4 focus-visible:ring-accent/20"
-		aria-label="Tambah pembukuan baru (belum tersedia)"
-	>
-		<span class="flex h-12 w-12 items-center justify-center rounded-full bg-accent-wash text-accent transition-colors group-hover:bg-accent group-hover:text-white">
-			<svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
-			</svg>
-		</span>
-		<span class="text-sm font-semibold text-ink">Tambah pembukuan baru</span>
-		<span class="max-w-[220px] text-xs leading-relaxed text-muted">Buat pembukuan perusahaan baru. Fitur ini belum aktif.</span>
-	</button>
+// menambah pembukuan baru. Klik membuka form isian nama; pembuatnya menjadi
+// owner perusahaan itu, jadi akun pertama hasil setup bisa langsung bekerja.
+// Saat belum ada pembukuan sama sekali, kartunya lebih menonjol (aksen).
+templ newCompanyCard(pertama bool) {
+	<details class="js-menu relative group">
+		<summary
+			class={ "flex min-h-[220px] w-full cursor-pointer list-none flex-col items-center justify-center gap-3 rounded-card border-2 border-dashed px-6 py-8 text-center transition-all focus:outline-none focus-visible:ring-4 focus-visible:ring-accent/20",
+				bordered(pertama) }
+			aria-label="Tambah pembukuan baru"
+		>
+			<span class={ "flex h-12 w-12 items-center justify-center rounded-full transition-colors group-hover:bg-accent group-hover:text-white",
+				badge(pertama) }>
+				<svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
+				</svg>
+			</span>
+			<span class="text-sm font-semibold text-ink">Tambah pembukuan baru</span>
+			if pertama {
+				<span class="max-w-[240px] text-xs leading-relaxed text-muted">Anda belum punya pembukuan. Buat yang pertama, lalu undang rekan lewat Pengaturan perusahaan.</span>
+			} else {
+				<span class="max-w-[220px] text-xs leading-relaxed text-muted">Buat pembukuan perusahaan baru. Anda menjadi owner pembukuannya.</span>
+			}
+		</summary>
+		<div class="absolute left-0 top-full z-20 mt-2 w-full rounded-card border border-line bg-white p-4 shadow-dropdown">
+			<form method="post" action="/companies" class="space-y-3">
+				<div>
+					<label class="mb-1.5 block text-sm font-medium text-ink" for="new-company-name">Nama Perusahaan</label>
+					<input id="new-company-name" name="name" required placeholder="mis. PT Tegiva Jaya Sejahtera" class={ inputClass }/>
+				</div>
+				<button type="submit" class={ btnPrimary + " w-full py-2" }>Buat Pembukuan</button>
+			</form>
+		</div>
+	</details>
+}
+
+// bordered memilih gaya bingkai kartu tambah pembukuan.
+func bordered(pertama bool) string {
+	if pertama {
+		return "border-accent/50 bg-accent-wash/60 hover:border-accent hover:bg-accent-wash"
+	}
+	return "border-line bg-white/60 hover:border-accent-soft hover:bg-accent-wash"
+}
+
+// badge memilih warna bulatan ikon kartu tambah pembukuan.
+func badge(pertama bool) string {
+	if pertama {
+		return "bg-accent text-white"
+	}
+	return "bg-accent-wash text-accent"
 }

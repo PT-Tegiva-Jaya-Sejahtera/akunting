@@ -76,6 +76,18 @@ RETURNING *;
 -- name: GetCompanyBySlug :one
 SELECT * FROM companies WHERE slug = @slug;
 
+-- name: CountActiveUsers :one
+SELECT count(*)::bigint AS total FROM users WHERE is_active = TRUE;
+
+-- name: CreateFirstUser :one
+-- Penjaga atomic: hanya membuat baris bila tabel users masih kosong, jadi
+-- dua request yang datang hampir bersamaan tidak bisa membuat dua akun
+-- pertama. Dipakai halaman setup pertama (first-run).
+INSERT INTO users (username, password_hash, full_name)
+SELECT @username, @password_hash, @full_name
+WHERE NOT EXISTS (SELECT 1 FROM users)
+RETURNING *;
+
 -- name: GetUserRoleInCompany :one
 SELECT role::TEXT AS role
 FROM company_users

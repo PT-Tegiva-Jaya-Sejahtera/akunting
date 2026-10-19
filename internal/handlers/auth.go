@@ -112,6 +112,13 @@ func (h *Handlers) LoginGet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// First-run: database belum punya satu pengguna pun, arahkan ke halaman
+	// setup supaya akun pertama dibuat sebelum ada yang bisa masuk.
+	exists, err := h.hasAnyUser(r)
+	if err == nil && !exists {
+		http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		return
+	}
 	h.renderLogin(w, r, "")
 }
 

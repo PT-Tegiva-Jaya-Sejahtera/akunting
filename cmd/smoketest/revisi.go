@@ -127,6 +127,8 @@ func evidenceRevisi(ctx context.Context, pool *pgxpool.Pool, q *db.Queries, user
 	router := chi.NewRouter()
 	router.Group(func(r chi.Router) {
 		r.Use(appmw.RequireAuth(q, false))
+		r.Get("/", h.HomeGet)
+		r.Post("/companies", h.CompanyCreatePost)
 		r.Route("/companies/{companyKey}", func(r chi.Router) {
 			r.Use(appmw.RequireCompany(q))
 			r.Get("/dashboard", h.DashboardGet)
@@ -140,6 +142,8 @@ func evidenceRevisi(ctx context.Context, pool *pgxpool.Pool, q *db.Queries, user
 			r.Post("/periods/{periodID}/close", h.PeriodClosePost)
 		})
 	})
+	router.Get("/setup", h.SetupGet)
+	router.Post("/setup", h.SetupPost)
 
 	token := "token-bukti-revisi"
 	if _, err := q.CreateSession(ctx, db.CreateSessionParams{
@@ -214,6 +218,8 @@ func evidenceRevisi(ctx context.Context, pool *pgxpool.Pool, q *db.Queries, user
 	htmlClosing := get(base + "/closing")
 	cek(strings.Contains(htmlClosing, "Daftar Jurnal Penutup") && strings.Contains(htmlClosing, "PENUTUP-"),
 		"halaman jurnal penutup menampilkan jurnal penutup hasil tutup buku")
+	cek(strings.Contains(htmlClosing, "Tanggal") && strings.Contains(htmlClosing, "Ikhtisar Laba Rugi"),
+		"jurnal penutup memuat kolom tanggal dan baris Ikhtisar Laba Rugi")
 
 	htmlPCTB2 := get(base + "/trial-balance/post-closing?period=" + fmt.Sprint(periode.ID))
 	cek(!strings.Contains(htmlPCTB2, "belum ditutup"),
@@ -249,4 +255,39 @@ func evidenceRevisi(ctx context.Context, pool *pgxpool.Pool, q *db.Queries, user
 	htmlInv := get(base + "/inventory")
 	cek(strings.Contains(htmlInv, "Rekap Stok Seluruh Barang") && strings.Contains(htmlInv, "45</td>"),
 		"halaman persediaan memuat rekap stok (masuk 100, keluar 55, sisa 45)")
+
+	// ===== 10. First-run setup dan buat pembukuan dari UI =====
+	wSetup := httptest.NewRecorder()
+	router.ServeHTTP(wSetup, httptest.NewRequest("GET", "/setup", nil))
+	cek(wSetup.Code == http.StatusSeeOther && wSetup.Header().Get("Location") == "/login",
+		"/setup mengalihkan ke /login bila database sudah punya pengguna (halaman setup mati)")
+
+	reqCompany := httptest.NewRequest("POST", "/companies", strings.NewReader("name=PT Bukti Kedua"))
+	reqCompany.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: token})
+	reqCompany.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	wCompany := httptest.NewRecorder()
+	router.ServeHTTP(wCompany, reqCompany)
+	cek(wCompany.Code == http.StatusSeeOther && strings.Contains(wCompany.Header().Get("Location"), "/dashboard"),
+		"pembukuan baru dibuat dari UI pilih pembukuan, pembuatnya menjadi owner (303 ke dashboard)")
+
+	htmlHome := func() string {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: token})
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			panic(fmt.Sprintf("GET / -> HTTP %d", w.Code))
+		}
+		return w.Body.String()
+	}()
+	cek(strings.Contains(htmlHome, "PT Bukti Kedua") && strings.Contains(htmlHome, "Tambah pembukuan baru"),
+		"landing memuat pembukuan baru dan kartu tambah pembukuan yang aktif")
+
+	companyBaru, err := q.GetCompanyBySlug(ctx, "pt-bukti-kedua")
+	if err != nil {
+		panic(err)
+	}
+	htmlDashBaru := get("/companies/" + companyBaru.UrlKey + "/dashboard")
+	cek(strings.Contains(htmlDashBaru, "Dashboard"),
+		"dashboard pembukuan baru terbuka tanpa data (proyeksi kosong aman)")
 }
