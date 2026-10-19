@@ -259,7 +259,7 @@ templ JournalFormPage(shell Shell, company db.Company, accounts []db.Account, pa
 				<div class="flex flex-wrap items-center justify-between gap-4 border-t border-line px-5 py-4">
 					<button
 						type="button"
-						hx-get={ "/companies/" + strconv.FormatInt(company.ID, 10) + "/journals/line" }
+						hx-get={ "/companies/" + company.UrlKey + "/journals/line" }
 						hx-target="#journal-lines"
 						hx-swap="beforeend"
 						class={ btnSecondary }

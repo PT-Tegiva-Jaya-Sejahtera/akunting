@@ -1317,9 +1317,9 @@ func JournalFormPage(shell Shell, company db.Company, accounts []db.Account, par
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var92 string
-			templ_7745c5c3_Var92, templ_7745c5c3_Err = templ.JoinStringErrs("/companies/" + strconv.FormatInt(company.ID, 10) + "/journals/line")
+			templ_7745c5c3_Var92, templ_7745c5c3_Err = templ.JoinStringErrs("/companies/" + company.UrlKey + "/journals/line")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/journals.templ`, Line: 262, Col: 83}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/journals.templ`, Line: 262, Col: 64}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var92))
 			if templ_7745c5c3_Err != nil {

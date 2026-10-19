@@ -613,7 +613,7 @@ func ReportsPage(shell Shell, company db.Company, view models.ReportView) templ.
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var34 templ.SafeURL = periodsPath(company.ID)
+				var templ_7745c5c3_Var34 templ.SafeURL = periodsPath(company.UrlKey)
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(string(templ_7745c5c3_Var34)))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err

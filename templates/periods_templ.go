@@ -65,7 +65,7 @@ func PeriodsPage(shell Shell, company db.Company, periods []models.PeriodView, h
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var4 templ.SafeURL = openingPath(company.ID)
+			var templ_7745c5c3_Var4 templ.SafeURL = openingPath(company.UrlKey)
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(string(templ_7745c5c3_Var4)))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -389,7 +389,7 @@ func PeriodsPage(shell Shell, company db.Company, periods []models.PeriodView, h
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var26 templ.SafeURL = openingPath(company.ID)
+						var templ_7745c5c3_Var26 templ.SafeURL = openingPath(company.UrlKey)
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(string(templ_7745c5c3_Var26)))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
@@ -413,7 +413,7 @@ func PeriodsPage(shell Shell, company db.Company, periods []models.PeriodView, h
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var27 templ.SafeURL = periodAction(company.ID, p.ID, "/close")
+						var templ_7745c5c3_Var27 templ.SafeURL = periodAction(company.UrlKey, p.ID, "/close")
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(string(templ_7745c5c3_Var27)))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
@@ -449,7 +449,7 @@ func PeriodsPage(shell Shell, company db.Company, periods []models.PeriodView, h
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var30 templ.SafeURL = periodAction(company.ID, p.ID, "/reopen")
+						var templ_7745c5c3_Var30 templ.SafeURL = periodAction(company.UrlKey, p.ID, "/reopen")
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(string(templ_7745c5c3_Var30)))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
@@ -517,7 +517,7 @@ func PeriodsPage(shell Shell, company db.Company, periods []models.PeriodView, h
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var35 templ.SafeURL = periodsPath(company.ID)
+			var templ_7745c5c3_Var35 templ.SafeURL = periodsPath(company.UrlKey)
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(string(templ_7745c5c3_Var35)))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -644,7 +644,7 @@ func OpeningBalancePage(shell Shell, company db.Company, view models.OpeningView
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var43 templ.SafeURL = periodsPath(company.ID)
+			var templ_7745c5c3_Var43 templ.SafeURL = periodsPath(company.UrlKey)
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(string(templ_7745c5c3_Var43)))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -778,7 +778,7 @@ func OpeningBalancePage(shell Shell, company db.Company, view models.OpeningView
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var53 templ.SafeURL = openingPath(company.ID)
+				var templ_7745c5c3_Var53 templ.SafeURL = openingPath(company.UrlKey)
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(string(templ_7745c5c3_Var53)))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -1137,17 +1137,16 @@ func openingValue(cents int64) string {
 	return models.FormatCents(cents)
 }
 
-func periodsPath(companyID int64) templ.SafeURL {
-	return templ.URL("/companies/" + strconv.FormatInt(companyID, 10) + "/periods")
+func periodsPath(urlKey string) templ.SafeURL {
+	return companyPath(urlKey, "/periods")
 }
 
-func openingPath(companyID int64) templ.SafeURL {
-	return templ.URL("/companies/" + strconv.FormatInt(companyID, 10) + "/periods/opening")
+func openingPath(urlKey string) templ.SafeURL {
+	return companyPath(urlKey, "/periods/opening")
 }
 
-func periodAction(companyID, periodID int64, action string) templ.SafeURL {
-	return templ.URL("/companies/" + strconv.FormatInt(companyID, 10) + "/periods/" +
-		strconv.FormatInt(periodID, 10) + action)
+func periodAction(urlKey string, periodID int64, action string) templ.SafeURL {
+	return companyPath(urlKey, "/periods/"+strconv.FormatInt(periodID, 10)+action)
 }
 
 var _ = templruntime.GeneratedTemplate

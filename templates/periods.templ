@@ -21,7 +21,7 @@ templ PeriodsPage(shell Shell, company db.Company, periods []models.PeriodView, 
 					dan laba periodenya dipindahkan ke akun Saldo Laba lewat jurnal penutup.
 				</div>
 			</div>
-			<a href={ openingPath(company.ID) } class={ btnSecondary }>Isi Saldo Awal</a>
+			<a href={ openingPath(company.UrlKey) } class={ btnSecondary }>Isi Saldo Awal</a>
 		</div>
 		if errMsg != "" {
 			@errBox(errMsg)
@@ -74,18 +74,18 @@ templ PeriodsPage(shell Shell, company db.Company, periods []models.PeriodView, 
 										if p.IsFirst && hasOpening {
 											<span class="text-ok">terisi</span>
 										} else if p.IsFirst {
-											<a href={ openingPath(company.ID) } class="font-medium text-accent hover:text-accent-hover hover:underline">belum diisi</a>
+											<a href={ openingPath(company.UrlKey) } class="font-medium text-accent hover:text-accent-hover hover:underline">belum diisi</a>
 										} else {
 											<span>tidak berlaku</span>
 										}
 									</td>
 									<td class="px-5 py-3.5 text-right">
 										if p.Status == "open" {
-											<form method="post" action={ periodAction(company.ID, p.ID, "/close") } class="inline">
+											<form method="post" action={ periodAction(company.UrlKey, p.ID, "/close") } class="inline">
 												<button type="submit" class={ btnSecondary + " px-3 py-1.5 text-xs" }>Tutup buku</button>
 											</form>
 										} else {
-											<form method="post" action={ periodAction(company.ID, p.ID, "/reopen") } class="inline">
+											<form method="post" action={ periodAction(company.UrlKey, p.ID, "/reopen") } class="inline">
 												<button type="submit" class={ btnGhost }>Buka lagi</button>
 											</form>
 										}
@@ -102,7 +102,7 @@ templ PeriodsPage(shell Shell, company db.Company, periods []models.PeriodView, 
 			<p class="mt-1 text-sm text-muted">
 				Satu periode = satu tahun buku. Rentang tidak boleh tumpang tindih dengan periode lain.
 			</p>
-			<form method="post" action={ periodsPath(company.ID) } class="mt-4 grid gap-4 sm:grid-cols-3">
+			<form method="post" action={ periodsPath(company.UrlKey) } class="mt-4 grid gap-4 sm:grid-cols-3">
 				<div>
 					<label class="mb-1.5 block text-sm font-medium text-ink" for="name">Nama periode</label>
 					<input id="name" name="name" placeholder="Tahun Buku 2027" class={ inputClass }/>
@@ -137,7 +137,7 @@ templ OpeningBalancePage(shell Shell, company db.Company, view models.OpeningVie
 					Saldo tiap akun pada awal periode pertama. Total debit wajib sama dengan total kredit.
 				</div>
 			</div>
-			<a href={ periodsPath(company.ID) } class={ btnSecondary }>Kembali ke Periode</a>
+			<a href={ periodsPath(company.UrlKey) } class={ btnSecondary }>Kembali ke Periode</a>
 		</div>
 		if errMsg != "" {
 			@errBox(errMsg)
@@ -151,7 +151,7 @@ templ OpeningBalancePage(shell Shell, company db.Company, view models.OpeningVie
 				<div class={ cardTitleClass }>
 					{ view.Period.Name } · mulai { view.Period.StartLabel }
 				</div>
-				<form method="post" action={ openingPath(company.ID) }>
+				<form method="post" action={ openingPath(company.UrlKey) }>
 					<div class="overflow-x-auto">
 						<table class="w-full min-w-[720px] text-sm">
 							<thead>
@@ -230,15 +230,14 @@ func openingValue(cents int64) string {
 	return models.FormatCents(cents)
 }
 
-func periodsPath(companyID int64) templ.SafeURL {
-	return templ.URL("/companies/" + strconv.FormatInt(companyID, 10) + "/periods")
+func periodsPath(urlKey string) templ.SafeURL {
+	return companyPath(urlKey, "/periods")
 }
 
-func openingPath(companyID int64) templ.SafeURL {
-	return templ.URL("/companies/" + strconv.FormatInt(companyID, 10) + "/periods/opening")
+func openingPath(urlKey string) templ.SafeURL {
+	return companyPath(urlKey, "/periods/opening")
 }
 
-func periodAction(companyID, periodID int64, action string) templ.SafeURL {
-	return templ.URL("/companies/" + strconv.FormatInt(companyID, 10) + "/periods/" +
-		strconv.FormatInt(periodID, 10) + action)
+func periodAction(urlKey string, periodID int64, action string) templ.SafeURL {
+	return companyPath(urlKey, "/periods/"+strconv.FormatInt(periodID, 10)+action)
 }

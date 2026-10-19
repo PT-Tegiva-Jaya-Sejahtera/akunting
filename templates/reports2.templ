@@ -161,7 +161,7 @@ func totalClass(kind int) string {
 templ EquityPage(shell Shell, company db.Company, view models.EquityView) {
 	@Layout(shell) {
 		@pageHeader("Laporan Perubahan Ekuitas", "Rekonsiliasi saldo awal ke saldo akhir setiap komponen ekuitas, memisahkan laba (rugi) periode berjalan dan transaksi dengan pemilik. Disusun menurut PSAK 201 par. 106-110.") {
-			<a href={ periodsPath(company.ID) } class={ btnSecondary }>Periode &amp; Tutup Buku</a>
+			<a href={ periodsPath(company.UrlKey) } class={ btnSecondary }>Periode &amp; Tutup Buku</a>
 		}
 		@statementFilterForm(view.ReportView)
 		<div class="mt-8 grid gap-6">
@@ -212,7 +212,7 @@ templ stmtRow(view models.ReportView, label string, amount int64, prior int64) {
 templ CashFlowPage(shell Shell, company db.Company, view models.CashFlowView) {
 	@Layout(shell) {
 		@pageHeader("Laporan Arus Kas", "Perubahan kas dan setara kas menurut aktivitas operasi, investasi, dan pendanaan, disusun dengan metode tidak langsung (PSAK 207).") {
-			<a href={ periodsPath(company.ID) } class={ btnSecondary }>Periode &amp; Tutup Buku</a>
+			<a href={ periodsPath(company.UrlKey) } class={ btnSecondary }>Periode &amp; Tutup Buku</a>
 		}
 		@statementFilterForm(view.ReportView)
 		<div class="mt-8 grid gap-6">
@@ -276,7 +276,7 @@ templ CashFlowPage(shell Shell, company db.Company, view models.CashFlowView) {
 templ NotesPage(shell Shell, company db.Company, view models.NotesView) {
 	@Layout(shell) {
 		@pageHeader("Catatan atas Laporan Keuangan", "Dasar penyusunan, kebijakan akuntansi signifikan, sumber ketidakpastian estimasi, dan rincian per akun dengan referensi silang. Disusun menurut PSAK 201 par. 112-138.") {
-			<a href={ periodsPath(company.ID) } class={ btnSecondary }>Periode &amp; Tutup Buku</a>
+			<a href={ periodsPath(company.UrlKey) } class={ btnSecondary }>Periode &amp; Tutup Buku</a>
 		}
 		@statementFilterForm(view.ReportView)
 		<div class="mt-8 grid gap-6">

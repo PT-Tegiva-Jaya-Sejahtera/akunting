@@ -564,7 +564,7 @@ func EquityPage(shell Shell, company db.Company, view models.EquityView) templ.C
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var30 templ.SafeURL = periodsPath(company.ID)
+				var templ_7745c5c3_Var30 templ.SafeURL = periodsPath(company.UrlKey)
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(string(templ_7745c5c3_Var30)))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -838,7 +838,7 @@ func CashFlowPage(shell Shell, company db.Company, view models.CashFlowView) tem
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var45 templ.SafeURL = periodsPath(company.ID)
+				var templ_7745c5c3_Var45 templ.SafeURL = periodsPath(company.UrlKey)
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(string(templ_7745c5c3_Var45)))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -1073,7 +1073,7 @@ func NotesPage(shell Shell, company db.Company, view models.NotesView) templ.Com
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var54 templ.SafeURL = periodsPath(company.ID)
+				var templ_7745c5c3_Var54 templ.SafeURL = periodsPath(company.UrlKey)
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(string(templ_7745c5c3_Var54)))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
