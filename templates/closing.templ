@@ -1,0 +1,109 @@
+package templates
+
+import (
+	"strconv"
+
+	"accounting/internal/database/db"
+	"accounting/internal/models"
+)
+
+// ClosingPage menampilkan halaman Jurnal Penutup: alur tutup buku, periode
+// yang masih terbuka (dengan tombol tutup), dan daftar jurnal penutup yang
+// sudah terbentuk beserta baris-barisnya.
+templ ClosingPage(shell Shell, company db.Company, view models.ClosingView) {
+	@Layout(shell) {
+		@pageHeader("Jurnal Penutup", company.Name+" · " + strconv.Itoa(view.ClosedCount) + " periode sudah ditutup") {
+			<a href={ companyPath(company.UrlKey, "/periods") } class={ btnSecondary }>Kelola Periode</a>
+			<a href={ companyPath(company.UrlKey, "/trial-balance/post-closing") } class={ btnSecondary }>NS Setelah Penutupan</a>
+		}
+
+		<div class={ cardClass + " mt-6" }>
+			<div class={ cardTitleClass }>Periode yang Masih Terbuka</div>
+			if len(view.OpenPeriods) == 0 {
+				<div class="px-5 py-6 text-sm text-muted">Semua periode sudah ditutup. Jurnal penutup menunggu periode terbuka berikutnya.</div>
+			} else {
+				<div class="overflow-x-auto">
+					<table class="w-full min-w-[640px] text-sm">
+						<thead>
+							<tr class="border-b border-line bg-panel/60">
+								<th class={ thClass }>Periode</th>
+								<th class={ thClass }>Rentang</th>
+								<th class={ thClass }>Status</th>
+								<th class={ thClass }></th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-line">
+							for _, p := range view.OpenPeriods {
+								<tr class="transition-colors hover:bg-panel/60">
+									<td class="px-5 py-2.5 text-label">{ p.Name }</td>
+									<td class="num px-5 py-2.5 text-xs text-muted">{ p.StartLabel } s.d. { p.EndLabel }</td>
+									<td class="px-5 py-2.5 text-label">{ p.StatusLabel }</td>
+									<td class="px-5 py-2.5 text-right">
+										if shell.Role == "owner" || shell.Role == "admin" {
+											<form method="post" action={ companyPath(company.UrlKey, "/periods/"+models.FormatThousands(p.ID)+"/close") } class="inline">
+												<button type="submit" class={ btnPrimary }>Tutup Buku (Buat Jurnal Penutup)</button>
+											</form>
+										} else {
+											<span class="text-xs text-muted">Hanya admin/owner yang bisa menutup buku</span>
+										}
+									</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+			<div class="border-t border-line px-5 py-3 text-xs text-muted">
+				Menutup buku membuat jurnal penutup otomatis: seluruh akun pendapatan dan beban dinolkan ke akun Saldo Laba,
+				lalu periode dikunci dari jurnal baru. Membuka lagi periode (di halaman Periode) menghapus jurnal penutupnya.
+			</div>
+		</div>
+
+		<div class={ cardClass + " mt-6" }>
+			<div class={ cardTitleClass }>
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<span>Daftar Jurnal Penutup</span>
+					<span class="text-xs font-normal text-muted">{ view.RoundingLabel }</span>
+				</div>
+			</div>
+			if len(view.Journals) == 0 {
+				<div class="px-5 py-6 text-sm text-muted">Belum ada jurnal penutup. Jurnal penutup terbentuk saat sebuah periode ditutup.</div>
+			} else {
+				for _, cj := range view.Journals {
+					<div class="border-b border-line last:border-b-0">
+						<div class="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-panel/60 px-5 py-3">
+							<div>
+								<span class="num text-sm font-semibold text-ink">{ cj.Reference }</span>
+								<span class="ml-3 text-xs text-muted">{ cj.PeriodName } · { cj.DateLabel }</span>
+							</div>
+							<div class="text-xs text-muted">Total { view.Money(cj.Total) }</div>
+						</div>
+						<div class="overflow-x-auto">
+							<table class="w-full min-w-[720px] text-sm">
+								<tbody class="divide-y divide-line">
+									for _, l := range cj.Lines {
+										<tr class="transition-colors hover:bg-panel/60">
+											<td class="num px-5 py-2.5 text-label">{ l.AccountCode }</td>
+											<td class="px-5 py-2.5 text-label">{ l.AccountName }</td>
+											<td class="px-5 py-2.5 text-xs text-muted">{ l.Description }</td>
+											<td class="num px-5 py-2.5 text-right text-ink">
+												if l.Debit != 0 {
+													{ view.Money(l.Debit) }
+												}
+											</td>
+											<td class="num px-5 py-2.5 text-right text-ink">
+												if l.Credit != 0 {
+													{ view.Money(l.Credit) }
+												}
+											</td>
+										</tr>
+									}
+								</tbody>
+							</table>
+						</div>
+					</div>
+				}
+			}
+		</div>
+	}
+}

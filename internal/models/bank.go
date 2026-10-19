@@ -289,6 +289,29 @@ type BankView struct {
 	RoundingUnit  string
 	RoundingLabel string
 	CanManage     bool
+	// KasKecil: kartu akun kas kecil (petty cash) di halaman ini. Nilai nil
+	// bila belum ada akun yang ditandai peran sistem kas_kecil.
+	KasKecil *KasKecilCard
+}
+
+// KasKecilCard adalah kartu akun kas kecil: saldo berjalan dan mutasi
+// terakhirnya, ditampilkan bersama panduan pencatatan imprest.
+type KasKecilCard struct {
+	AccountID int64
+	Code      string
+	Name      string
+	Saldo     int64
+	Movements []KasKecilMovement
+}
+
+// KasKecilMovement adalah satu mutasi kas kecil.
+type KasKecilMovement struct {
+	DateLabel string
+	Reference string
+	Memo      string
+	Debit     int64
+	Credit    int64
+	Saldo     int64
 }
 
 // BankCoaOption adalah pilihan akun COA pada form tambah rekening bank.

@@ -14,6 +14,11 @@ const (
 	// SystemRoleRetainedEarnings adalah akun Saldo Laba, tujuan jurnal
 	// penutup pada akhir periode (PSAK 201 par. 106-110).
 	SystemRoleRetainedEarnings = "laba_ditahan"
+
+	// SystemRoleKasKecil menandai akun kas kecil (petty cash) yang dipisah
+	// dari Kas dan Bank. Dana dicadangkan sekali (imprest), pengeluaran
+	// harian mengurangi akun ini, sisa kembalian tetap menjadi saldonya.
+	SystemRoleKasKecil = "kas_kecil"
 )
 
 // SystemRoleLabel menerjemahkan peran sistem ke label tampilan.
@@ -21,6 +26,8 @@ func SystemRoleLabel(role string) string {
 	switch role {
 	case SystemRoleRetainedEarnings:
 		return "Saldo Laba (tujuan tutup buku)"
+	case SystemRoleKasKecil:
+		return "Kas Kecil (petty cash)"
 	default:
 		return "-"
 	}

@@ -75,6 +75,72 @@ func (h *Handlers) renderBank(w http.ResponseWriter, r *http.Request,
 			UnmatchedCount: a.UnmatchedCount,
 		})
 	}
+
+	// Kartu Kas Kecil: akun bertanda peran sistem kas_kecil, dengan saldo
+	// berjalan dan mutasi terakhirnya. Bila belum ada akun bertanda, kartu
+	// tidak tampil dan panduannya tetap mengarah ke halaman Akun.
+	if kk, err := h.DB.GetAccountBySystemRole(r.Context(), db.GetAccountBySystemRoleParams{
+		CompanyID:  company.ID,
+		SystemRole: models.SystemRoleKasKecil,
+	}); err == nil {
+		today := time.Now()
+		inception := time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC)
+		saldoRows, err := h.periodRows(r.Context(), company.ID, inception, today)
+		if err != nil {
+			http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
+			return
+		}
+		var saldo int64
+		for _, row := range saldoRows {
+			if row.ID == kk.ID {
+				saldo = models.NumericToCents(row.TotalDebit) - models.NumericToCents(row.TotalCredit)
+			}
+		}
+		movements, err := h.DB.ListAccountMovements(r.Context(), db.ListAccountMovementsParams{
+			CompanyID: company.ID,
+			AccountID: kk.ID,
+			DateFrom:  dateValue(inception),
+			DateTo:    dateValue(today),
+		})
+		if err != nil {
+			http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
+			return
+		}
+		card := &models.KasKecilCard{AccountID: kk.ID, Code: kk.Code, Name: kk.Name, Saldo: saldo}
+		running := saldo
+		// Saldo berjalan dihitung dari terbaru mundur ke belakang, lalu
+		// baris terakhir (maksimum 5) ditampilkan terurut naik.
+		type mv struct {
+			label, ref, memo string
+			debit, credit    int64
+			saldo            int64
+		}
+		all := make([]mv, 0, len(movements))
+		for i := len(movements) - 1; i >= 0; i-- {
+			m := movements[i]
+			all = append(all, mv{
+				label:  m.JournalDate.Time.Format("02 Jan 2006"),
+				ref:    m.Reference,
+				memo:   m.Memo,
+				debit:  models.NumericToCents(m.Debit),
+				credit: models.NumericToCents(m.Credit),
+				saldo:  running,
+			})
+			running -= models.NumericToCents(m.Debit) - models.NumericToCents(m.Credit)
+		}
+		start := 0
+		if len(all) > 5 {
+			start = len(all) - 5
+		}
+		for i := len(all) - 1; i >= start; i-- {
+			m := all[i]
+			card.Movements = append(card.Movements, models.KasKecilMovement{
+				DateLabel: m.label, Reference: m.ref, Memo: m.memo,
+				Debit: m.debit, Credit: m.credit, Saldo: m.saldo,
+			})
+		}
+		view.KasKecil = card
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = templates.BankPage(h.newShell(r, user, company, role, "bank", "Kas & Bank "+company.Name), company, view, errMsg).Render(r.Context(), w)
 }

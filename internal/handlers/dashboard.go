@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"net/http"
+	"sort"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -26,48 +28,78 @@ func (h *Handlers) DashboardGet(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
 		return
 	}
-	selected := selectPeriod(periods, "")
 	today := time.Now()
+
+	// Pilihan tahun pembukuan: tahun kalender yang punya jurnal ditambah
+	// tahun berjalan. Default tahun berjalan; angka yang ditampilkan bukan
+	// lagi year-to-date statis melainkan tahun terpilih.
+	yearRows, err := h.DB.ListJournalYears(ctx, company.ID)
+	if err != nil {
+		http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
+		return
+	}
+	yearSet := map[int]bool{today.Year(): true}
+	for _, y := range yearRows {
+		yearSet[int(y)] = true
+	}
+	years := make([]int, 0, len(yearSet))
+	for y := range yearSet {
+		years = append(years, y)
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(years)))
+	selectedYear := today.Year()
+	if y, err := strconv.Atoi(r.URL.Query().Get("year")); err == nil && y > 1900 {
+		selectedYear = y
+	}
+
+	// Tanggal potret: hari ini bila tahun berjalan, kalau tidak 31 Desember
+	// tahun terpilih (angka satu tahun penuh).
+	asOf := today
+	if selectedYear != today.Year() {
+		asOf = time.Date(selectedYear, 12, 31, 0, 0, 0, 0, time.UTC)
+	}
 
 	view := models.DashboardView{
 		RoundingUnit:  company.RoundingUnit,
 		RoundingLabel: models.RoundingLabel(company.RoundingUnit),
-		AsOfLabel:     models.FormatDateID(today),
+		AsOfLabel:     models.FormatDateID(asOf),
+		Years:         years,
+		SelectedYear:  selectedYear,
 	}
 
-	// Tanggal potret: akhir periode bila periode sudah lewat atau ditutup.
-	asOf := today
-	if selected != nil {
-		view.HasPeriod = true
-		view.PeriodName = selected.Name
-		if selected.Status == db.PeriodStatusClosed {
-			view.PeriodStatus = "Ditutup"
-			if selected.EndDate.Time.Before(asOf) {
-				asOf = selected.EndDate.Time
+	// Kartu periode: periode akuntansi yang memuat tanggal potret.
+	for i := range periods {
+		p := periods[i]
+		if !asOf.Before(p.StartDate.Time) && !asOf.After(p.EndDate.Time) {
+			view.HasPeriod = true
+			view.PeriodName = p.Name
+			if p.Status == db.PeriodStatusClosed {
+				view.PeriodStatus = "Ditutup"
+			} else {
+				view.PeriodStatus = "Terbuka"
 			}
-		} else {
-			view.PeriodStatus = "Terbuka"
+			break
 		}
-		view.AsOfLabel = models.FormatDateID(asOf)
-
-		// Laba rugi periode berjalan (awal periode sampai tanggal potret).
-		periodRows, err := h.periodRows(ctx, company.ID, selected.StartDate.Time, asOf)
-		if err != nil {
-			http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
-			return
-		}
-		for _, row := range periodRows {
-			debit := models.NumericToCents(row.TotalDebit)
-			credit := models.NumericToCents(row.TotalCredit)
-			switch row.AccountType {
-			case db.AccountTypeRevenue:
-				view.Revenue += credit - debit
-			case db.AccountTypeExpense:
-				view.Expense += debit - credit
-			}
-		}
-		view.NetIncome = view.Revenue - view.Expense
 	}
+
+	// Laba rugi tahun terpilih (1 Januari sampai tanggal potret).
+	yearStart := time.Date(view.SelectedYear, 1, 1, 0, 0, 0, 0, time.UTC)
+	periodRows, err := h.periodRows(ctx, company.ID, yearStart, asOf)
+	if err != nil {
+		http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
+		return
+	}
+	for _, row := range periodRows {
+		debit := models.NumericToCents(row.TotalDebit)
+		credit := models.NumericToCents(row.TotalCredit)
+		switch row.AccountType {
+		case db.AccountTypeRevenue:
+			view.Revenue += credit - debit
+		case db.AccountTypeExpense:
+			view.Expense += debit - credit
+		}
+	}
+	view.NetIncome = view.Revenue - view.Expense
 
 	// Posisi keuangan sampai tanggal potret.
 	inception := time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC)

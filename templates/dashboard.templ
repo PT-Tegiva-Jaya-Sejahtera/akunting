@@ -151,7 +151,7 @@ templ chartAxis(c models.ChartData) {
 // jurnal terbaru.
 templ DashboardPage(shell Shell, company db.Company, view models.DashboardView) {
 	@Layout(shell) {
-		@pageHeader("Dashboard", company.Name+" · periode "+(view.PeriodName)+" ("+view.PeriodStatus+"), posisi per "+view.AsOfLabel) {
+		@pageHeader("Dashboard", company.Name+" · posisi per "+view.AsOfLabel) {
 			<a href={ companyPath(company.UrlKey, "/journals/new") } class={ btnPrimary }>
 				<svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 					<path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
@@ -160,6 +160,20 @@ templ DashboardPage(shell Shell, company db.Company, view models.DashboardView) 
 			</a>
 			<a href={ companyPath(company.UrlKey, "/reports") } class={ btnSecondary }>Laporan Keuangan</a>
 		}
+		<form method="get" class={ cardClass + " mt-6 flex flex-wrap items-end gap-4 px-5 py-4" }>
+			<div>
+				<label class="mb-1.5 block text-sm font-medium text-ink" for="year">Tahun Pembukuan</label>
+				<select id="year" name="year" class={ inputClass + " w-40" }>
+					for _, y := range view.Years {
+						<option value={ strconv.Itoa(y) } selected?={ y == view.SelectedYear }>{ strconv.Itoa(y) }</option>
+					}
+				</select>
+			</div>
+			<button type="submit" class={ btnPrimary }>Tampilkan</button>
+			if view.HasPeriod {
+				<div class="pb-2 text-xs text-muted">Periode akuntansi yang memuat tanggal potret: { view.PeriodName } ({ view.PeriodStatus })</div>
+			}
+		</form>
 		<div class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
 			@kpiCard("Jumlah Aset", view.Money(view.TotalAssets), formatSub("Kas & setara kas "+view.Money(view.CashTotal), view.RoundingLabel), "text-ink")
 			@kpiCard("Liabilitas", view.Money(view.TotalLiabilities), "Termasuk utang bank "+view.Money(view.BankLoan), "text-ink")
@@ -191,8 +205,8 @@ templ DashboardPage(shell Shell, company db.Company, view models.DashboardView) 
 					<div class="flex items-center gap-0.5 rounded-input border border-line bg-panel/60 p-0.5">
 						for _, o := range view.RangeOptions {
 							<a
-								href={ templ.URL("?range=" + o.Value) }
-								hx-get={ "?range=" + o.Value }
+								href={ templ.URL("?year=" + strconv.Itoa(view.SelectedYear) + "&range=" + o.Value) }
+								hx-get={ "?year=" + strconv.Itoa(view.SelectedYear) + "&range=" + o.Value }
 								hx-target="#tren-card"
 								hx-select="#tren-card"
 								hx-swap="outerHTML"

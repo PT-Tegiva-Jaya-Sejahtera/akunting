@@ -32,13 +32,18 @@ type LedgerView struct {
 	DateToISO        string
 	Periods          []PeriodView
 	SelectedPeriodID int64
-	Rows             []LedgerRow
-	TotalDebit       int64
-	TotalCredit      int64
-	Account          *LedgerRow
-	Movements        []LedgerMovement
-	RoundingUnit     string
-	RoundingLabel    string
+	// Pilihan rentang bulan bebas (lintas tahun): format "2006-01". Bila
+	// keduanya terisi, rentang bulan menimpa periode akuntansi.
+	MonthFrom     string
+	MonthTo       string
+	RangeLabel    string
+	Rows          []LedgerRow
+	TotalDebit    int64
+	TotalCredit   int64
+	Account       *LedgerRow
+	Movements     []LedgerMovement
+	RoundingUnit  string
+	RoundingLabel string
 }
 
 // Money menampilkan nilai sen memakai satuan pembulatan entitas.

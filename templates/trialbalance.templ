@@ -1,0 +1,103 @@
+package templates
+
+import (
+	"strconv"
+
+	"accounting/internal/database/db"
+	"accounting/internal/models"
+)
+
+// TrialBalancePage menampilkan Neraca Saldo (trial balance) atau Neraca
+// Saldo Setelah Penutupan (bila postClosing true): saldo tiap akun pada sisi
+// normalnya dengan total debit dan kredit di bagian bawah.
+templ TrialBalancePage(shell Shell, company db.Company, view models.TrialBalanceView, postClosing bool) {
+	@Layout(shell) {
+		if postClosing {
+			@pageHeader("Neraca Saldo Setelah Penutupan", company.Name+" · "+view.PeriodName+" · per "+view.DateToISO) {
+				<a href={ companyPath(company.UrlKey, "/closing") } class={ btnSecondary }>Jurnal Penutup</a>
+			}
+		} else {
+			@pageHeader("Neraca Saldo", company.Name+" · "+view.PeriodName+" ("+view.PeriodStatus+") · "+view.DateFromISO+" s.d. "+view.DateToISO) {
+				<a href={ companyPath(company.UrlKey, "/worksheet") } class={ btnSecondary }>Kertas Kerja</a>
+			}
+		}
+		if view.Warning != "" {
+			<div class="mt-6 rounded-input border border-line bg-accent-wash px-5 py-3 text-sm text-ink">{ view.Warning }</div>
+		}
+		<form method="get" class={ cardClass + " mt-6 flex flex-wrap items-end gap-4 px-5 py-4" }>
+			<div>
+				<label class="mb-1.5 block text-sm font-medium text-ink" for="period">Periode akuntansi</label>
+				<select id="period" name="period" class={ inputClass + " w-56" }>
+					<option value="">Periode terbaru</option>
+					for _, p := range view.Periods {
+						<option value={ models.FormatThousands(p.ID) } selected?={ p.ID == view.SelectedPeriodID }>
+							{ p.Name } · { p.StatusLabel }
+						</option>
+					}
+				</select>
+			</div>
+			<button type="submit" class={ btnPrimary }>Tampilkan</button>
+		</form>
+
+		if len(view.Rows) == 0 {
+			<div class={ cardClass + " mt-6" }>
+				@emptyState("M3.75 5.25h16.5v13.5H3.75zM3.75 9.75h16.5M3.75 14.25h16.5", "Belum ada saldo", "Neraca saldo tersusun setelah ada jurnal pada periode ini.") {}
+			</div>
+		} else {
+			<div class={ cardClass + " mt-6" }>
+				<div class={ cardTitleClass }>
+					<div class="flex flex-wrap items-center justify-between gap-3">
+						if postClosing {
+							<span>Saldo Akun per Akhir { view.PeriodName } (Setelah Jurnal Penutup)</span>
+						} else {
+							<span>Saldo Akun Periode { view.PeriodName }</span>
+						}
+						<span class="text-xs font-normal text-muted">{ view.RoundingLabel }</span>
+					</div>
+				</div>
+				<div class="overflow-x-auto">
+					<table class="w-full min-w-[720px] text-sm">
+						<thead>
+							<tr class="border-b border-line bg-panel/60">
+								<th class={ thClass }>No</th>
+								<th class={ thClass }>Kode</th>
+								<th class={ thClass }>Nama Akun</th>
+								<th class={ thClass + " text-right" }>Debit</th>
+								<th class={ thClass + " text-right" }>Kredit</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-line">
+							for i, row := range view.Rows {
+								<tr class="transition-colors hover:bg-panel/60">
+									<td class="num px-5 py-2.5 text-xs text-muted">{ strconv.Itoa(i + 1) }</td>
+									<td class="num px-5 py-2.5 text-label">{ row.Code }</td>
+									<td class="px-5 py-2.5 text-label">{ row.Name }</td>
+									<td class="num px-5 py-2.5 text-right text-ink">
+										if row.Debit != 0 {
+											{ view.Money(row.Debit) }
+										}
+									</td>
+									<td class="num px-5 py-2.5 text-right text-ink">
+										if row.Credit != 0 {
+											{ view.Money(row.Credit) }
+										}
+									</td>
+								</tr>
+							}
+						</tbody>
+						<tfoot>
+							<tr class="border-t-2 border-line bg-panel/60 font-semibold">
+								<td class="num px-5 py-3" colspan="3">Total</td>
+								<td class="num px-5 py-3 text-right text-ink">{ view.Money(view.TotalDebit) }</td>
+								<td class="num px-5 py-3 text-right text-ink">{ view.Money(view.TotalCredit) }</td>
+							</tr>
+						</tfoot>
+					</table>
+				</div>
+			</div>
+			if postClosing {
+				<div class="mt-4 text-xs text-muted">Neraca saldo setelah penutupan hanya memuat akun aset, liabilitas, dan ekuitas; akun pendapatan dan beban telah dinolkan oleh jurnal penutup ke Saldo Laba.</div>
+			}
+		}
+	}
+}

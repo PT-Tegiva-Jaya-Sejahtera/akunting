@@ -47,6 +47,51 @@ templ InventoryPage(shell Shell, company db.Company, view models.InventoryView, 
 			<button type="submit" class={ btnPrimary }>Tampilkan</button>
 			<span class="text-xs text-muted">Nilai persediaan, harga rata-rata, dan harga pokok ditampilkan dalam Rupiah dan sen</span>
 		</form>
+		if len(view.Rekap) > 0 {
+			<div class={ cardClass + " mt-6" }>
+				<div class={ cardTitleClass }>
+					<div class="flex flex-wrap items-center justify-between gap-3">
+						<span>Rekap Stok Seluruh Barang</span>
+						if view.AccountCode != "" {
+							<span class="text-xs font-normal text-muted">Akun persediaan: <span class="num">{ view.AccountCode }</span></span>
+						}
+					</div>
+				</div>
+				<div class="overflow-x-auto">
+					<table class="w-full min-w-[880px] text-sm">
+						<thead>
+							<tr class="border-b border-line bg-panel/60">
+								<th class={ thClass }>No</th>
+								<th class={ thClass }>Kode Akun</th>
+								<th class={ thClass }>Nama Barang</th>
+								<th class={ thClass }>Satuan</th>
+								<th class={ thClass + " text-right" }>Masuk</th>
+								<th class={ thClass }>Tgl Masuk</th>
+								<th class={ thClass + " text-right" }>Keluar</th>
+								<th class={ thClass }>Tgl Keluar</th>
+								<th class={ thClass + " text-right" }>Sisa</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-line">
+							for _, r := range view.Rekap {
+								<tr class="transition-colors hover:bg-panel/60">
+									<td class="num px-5 py-2.5 text-xs text-muted">{ strconv.Itoa(r.No) }</td>
+									<td class="num px-5 py-2.5 text-label">{ r.AccountCode }</td>
+									<td class="px-5 py-2.5 text-label">{ r.Name }</td>
+									<td class="px-5 py-2.5 text-xs text-muted">{ r.Unit }</td>
+									<td class="num px-5 py-2.5 text-right text-ink">{ r.QtyInLabel }</td>
+									<td class="num px-5 py-2.5 text-xs text-muted">{ r.LastInLabel }</td>
+									<td class="num px-5 py-2.5 text-right text-ink">{ r.QtyOutLabel }</td>
+									<td class="num px-5 py-2.5 text-xs text-muted">{ r.LastOutLabel }</td>
+									<td class="num px-5 py-2.5 text-right font-medium text-ink">{ r.SisaLabel }</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+				<div class="border-t border-line px-5 py-3 text-xs text-muted">Masuk dan keluar adalah kumulatif sampai tanggal laporan; tgl masuk/keluar adalah tanggal mutasi terakhir masing-masing; sisa = masuk - keluar.</div>
+			</div>
+		}
 		if view.CanManage {
 			<div class={ cardClass + " mt-6 px-5 py-5" }>
 				<div class="text-sm font-semibold text-ink">Tambah Item</div>

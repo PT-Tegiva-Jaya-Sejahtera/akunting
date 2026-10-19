@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -17,7 +18,8 @@ import (
 	"accounting/templates"
 )
 
-// JournalsListGet menampilkan daftar jurnal terbaru perusahaan.
+// JournalsListGet menampilkan daftar jurnal terbaru perusahaan beserta kartu
+// "Posisi Semua Akun": seluruh baris buku kronologis dengan total di bawah.
 func (h *Handlers) JournalsListGet(w http.ResponseWriter, r *http.Request) {
 	user, role, company, ok := h.companyContext(w, r)
 	if !ok {
@@ -33,8 +35,85 @@ func (h *Handlers) JournalsListGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	overview, ok := h.buildJournalsOverview(w, r, company)
+	if !ok {
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = templates.JournalsListPage(h.newShell(r, user, company, role, "journals", "Jurnal "+company.Name), company, journals).Render(r.Context(), w)
+	_ = templates.JournalsListPage(h.newShell(r, user, company, role, "journals", "Jurnal "+company.Name), company, journals, overview).Render(r.Context(), w)
+}
+
+// journalOverviewLimit batas baris tampilan menyeluruh supaya halaman tetap
+// sehat; bila tercapai, halaman menandai data yang dipotong.
+const journalOverviewLimit = 2000
+
+// buildJournalsOverview menyusun tampilan "posisi semua akun": seluruh baris
+// buku pada tahun terpilih (atau semua tahun), kronologis, dengan total.
+func (h *Handlers) buildJournalsOverview(w http.ResponseWriter, r *http.Request, company db.Company) (models.JournalsOverviewView, bool) {
+	ctx := r.Context()
+	view := models.JournalsOverviewView{}
+
+	yearRows, err := h.DB.ListJournalYears(ctx, company.ID)
+	if err != nil {
+		http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
+		return view, false
+	}
+	today := time.Now()
+	yearSet := map[int]bool{today.Year(): true}
+	for _, y := range yearRows {
+		yearSet[int(y)] = true
+	}
+	for y := range yearSet {
+		view.Years = append(view.Years, y)
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(view.Years)))
+
+	if s := r.URL.Query().Get("year"); s != "" {
+		if y, err := strconv.Atoi(s); err == nil {
+			view.SelectedYear = y
+		}
+	} else {
+		view.SelectedYear = today.Year()
+	}
+
+	from := time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)
+	if view.SelectedYear > 0 {
+		from = time.Date(view.SelectedYear, 1, 1, 0, 0, 0, 0, time.UTC)
+		to = time.Date(view.SelectedYear, 12, 31, 0, 0, 0, 0, time.UTC)
+	}
+
+	rows, err := h.DB.ListAllJournalLines(ctx, db.ListAllJournalLinesParams{
+		CompanyID:  company.ID,
+		DateFrom:   dateValue(from),
+		DateTo:     dateValue(to),
+		LimitCount: journalOverviewLimit + 1,
+	})
+	if err != nil {
+		http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
+		return view, false
+	}
+	if len(rows) > journalOverviewLimit {
+		rows = rows[:journalOverviewLimit]
+		view.Truncated = true
+	}
+	for _, row := range rows {
+		line := models.JournalLineAll{
+			DateLabel:   row.JournalDate.Time.Format("02-01-2006"),
+			Reference:   row.Reference,
+			AccountCode: row.AccountCode,
+			AccountName: row.AccountName,
+			Description: row.Description,
+			Debit:       models.NumericToCents(row.Debit),
+			Credit:      models.NumericToCents(row.Credit),
+			IsAdjusting: row.IsAdjusting,
+		}
+		view.TotalDebit += line.Debit
+		view.TotalCredit += line.Credit
+		view.Rows = append(view.Rows, line)
+	}
+	return view, true
 }
 
 // JournalNewGet menampilkan form jurnal baru berisi dua baris kosong.

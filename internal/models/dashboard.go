@@ -21,6 +21,12 @@ type DashboardView struct {
 	HasPeriod     bool
 	JournalCount  int64
 
+	// Pilihan periode tahun pembukuan (tahun kalender bebas, tidak statis
+	// year-to-date). Years berisi tahun yang punya jurnal ditambah tahun
+	// berjalan; SelectedYear adalah tahun aktif.
+	Years        []int
+	SelectedYear int
+
 	TotalAssets      int64
 	TotalLiabilities int64
 	TotalEquity      int64

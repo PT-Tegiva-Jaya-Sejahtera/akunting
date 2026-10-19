@@ -2396,6 +2396,80 @@ func (q *Queries) ListAdjustingJournals(ctx context.Context, arg ListAdjustingJo
 	return items, nil
 }
 
+const listAllJournalLines = `-- name: ListAllJournalLines :many
+SELECT
+    j.journal_date,
+    j.reference,
+    j.is_adjusting,
+    a.code        AS account_code,
+    a.name        AS account_name,
+    le.description,
+    le.debit,
+    le.credit
+FROM ledger_entries le
+JOIN journals j ON j.id = le.journal_id AND j.company_id = le.company_id
+JOIN accounts a ON a.id = le.account_id AND a.company_id = le.company_id
+WHERE le.company_id = $1
+  AND j.journal_date >= $2
+  AND j.journal_date <= $3
+ORDER BY j.journal_date, j.id, le.id
+LIMIT $4
+`
+
+type ListAllJournalLinesParams struct {
+	CompanyID  int64
+	DateFrom   pgtype.Date
+	DateTo     pgtype.Date
+	LimitCount int32
+}
+
+type ListAllJournalLinesRow struct {
+	JournalDate pgtype.Date
+	Reference   string
+	IsAdjusting bool
+	AccountCode string
+	AccountName string
+	Description string
+	Debit       pgtype.Numeric
+	Credit      pgtype.Numeric
+}
+
+// Seluruh baris buku (semua jurnal) pada rentang tanggal, terurut kronologis:
+// dasar tampilan "posisi semua akun" di halaman jurnal umum.
+func (q *Queries) ListAllJournalLines(ctx context.Context, arg ListAllJournalLinesParams) ([]ListAllJournalLinesRow, error) {
+	rows, err := q.db.Query(ctx, listAllJournalLines,
+		arg.CompanyID,
+		arg.DateFrom,
+		arg.DateTo,
+		arg.LimitCount,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllJournalLinesRow{}
+	for rows.Next() {
+		var i ListAllJournalLinesRow
+		if err := rows.Scan(
+			&i.JournalDate,
+			&i.Reference,
+			&i.IsAdjusting,
+			&i.AccountCode,
+			&i.AccountName,
+			&i.Description,
+			&i.Debit,
+			&i.Credit,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listBankAccounts = `-- name: ListBankAccounts :many
 SELECT
     ba.id, ba.company_id, ba.account_id, ba.bank_name, ba.account_number, ba.currency, ba.is_active, ba.created_at, ba.updated_at,
@@ -2896,6 +2970,34 @@ func (q *Queries) ListJournalKeys(ctx context.Context, companyID int64) ([]ListJ
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listJournalYears = `-- name: ListJournalYears :many
+SELECT DISTINCT EXTRACT(YEAR FROM journal_date)::INT AS year
+FROM journals
+WHERE company_id = $1
+ORDER BY year DESC
+`
+
+// Tahun kalender yang punya jurnal, untuk pilihan periode tahun di dashboard.
+func (q *Queries) ListJournalYears(ctx context.Context, companyID int64) ([]int32, error) {
+	rows, err := q.db.Query(ctx, listJournalYears, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int32{}
+	for rows.Next() {
+		var year int32
+		if err := rows.Scan(&year); err != nil {
+			return nil, err
+		}
+		items = append(items, year)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

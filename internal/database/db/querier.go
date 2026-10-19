@@ -134,6 +134,9 @@ type Querier interface {
 	ListAccounts(ctx context.Context, companyID int64) ([]Account, error)
 	ListAccountsAll(ctx context.Context, companyID int64) ([]Account, error)
 	ListAdjustingJournals(ctx context.Context, arg ListAdjustingJournalsParams) ([]Journal, error)
+	// Seluruh baris buku (semua jurnal) pada rentang tanggal, terurut kronologis:
+	// dasar tampilan "posisi semua akun" di halaman jurnal umum.
+	ListAllJournalLines(ctx context.Context, arg ListAllJournalLinesParams) ([]ListAllJournalLinesRow, error)
 	ListBankAccounts(ctx context.Context, companyID int64) ([]ListBankAccountsRow, error)
 	// ============================================================
 	// RBAC: daftar perusahaan yang berhak diakses user
@@ -154,6 +157,8 @@ type Querier interface {
 	ListInvitations(ctx context.Context, companyID int64) ([]Invitation, error)
 	// Kunci jurnal (tanggal dan referensi) untuk mendeteksi import berganda.
 	ListJournalKeys(ctx context.Context, companyID int64) ([]ListJournalKeysRow, error)
+	// Tahun kalender yang punya jurnal, untuk pilihan periode tahun di dashboard.
+	ListJournalYears(ctx context.Context, companyID int64) ([]int32, error)
 	ListJournals(ctx context.Context, arg ListJournalsParams) ([]Journal, error)
 	// ============================================================
 	// Pihak (pelanggan/supplier)

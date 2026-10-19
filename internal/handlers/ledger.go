@@ -34,7 +34,22 @@ func (h *Handlers) LedgerGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var from, to time.Time
+	monthFrom := r.URL.Query().Get("from")
+	monthTo := r.URL.Query().Get("to")
+	startF, errF := time.Parse("2006-01", monthFrom)
+	endF, errT := time.Parse("2006-01", monthTo)
 	switch {
+	// Rentang bulan bebas (lintas tahun) menimpa pilihan periode bila keduanya terisi.
+	case errF == nil && errT == nil:
+		from = startF
+		to = endF.AddDate(0, 1, -1) // hari terakhir bulan akhir
+		if to.Before(from) {
+			from, to = to, from
+		}
+		view.MonthFrom = monthFrom
+		view.MonthTo = monthTo
+		view.PeriodName = "Rentang bulan terpilih"
+		view.RangeLabel = "Rentang bebas " + models.FormatDateID(from) + " s.d. " + models.FormatDateID(to)
 	case selected != nil:
 		from, to = selected.StartDate.Time, selected.EndDate.Time
 		view.PeriodName = selected.Name

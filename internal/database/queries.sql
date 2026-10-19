@@ -290,6 +290,34 @@ WHERE company_id = @company_id
 ORDER BY journal_date DESC, id DESC
 LIMIT @limit_count;
 
+-- Tahun kalender yang punya jurnal, untuk pilihan periode tahun di dashboard.
+-- name: ListJournalYears :many
+SELECT DISTINCT EXTRACT(YEAR FROM journal_date)::INT AS year
+FROM journals
+WHERE company_id = @company_id
+ORDER BY year DESC;
+
+-- Seluruh baris buku (semua jurnal) pada rentang tanggal, terurut kronologis:
+-- dasar tampilan "posisi semua akun" di halaman jurnal umum.
+-- name: ListAllJournalLines :many
+SELECT
+    j.journal_date,
+    j.reference,
+    j.is_adjusting,
+    a.code        AS account_code,
+    a.name        AS account_name,
+    le.description,
+    le.debit,
+    le.credit
+FROM ledger_entries le
+JOIN journals j ON j.id = le.journal_id AND j.company_id = le.company_id
+JOIN accounts a ON a.id = le.account_id AND a.company_id = le.company_id
+WHERE le.company_id = @company_id
+  AND j.journal_date >= @date_from
+  AND j.journal_date <= @date_to
+ORDER BY j.journal_date, j.id, le.id
+LIMIT @limit_count;
+
 -- name: GetJournalByID :one
 SELECT *
 FROM journals

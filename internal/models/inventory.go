@@ -119,6 +119,25 @@ type InventoryView struct {
 	Items      []InventoryItem
 	Buku       InventoryCOABuku
 	CanManage  bool
+	// Rekap stok seluruh barang: kumulatif masuk/keluar, tanggal terakhir
+	// masuk/keluar, dan sisa per item, plus kode akun persediaan terkait.
+	Rekap       []InventoryRekapRow
+	AccountCode string
+}
+
+// InventoryRekapRow adalah satu baris rekap persediaan: no urut, kode akun
+// persediaan, nama barang, kumulatif masuk dan keluar dengan tanggal
+// terakhirnya, serta sisa stok.
+type InventoryRekapRow struct {
+	No           int
+	AccountCode  string
+	Name         string
+	Unit         string
+	QtyInLabel   string
+	LastInLabel  string
+	QtyOutLabel  string
+	LastOutLabel string
+	SisaLabel    string
 }
 
 // Money menampilkan nilai sen secara penuh (dengan sen) supaya angka

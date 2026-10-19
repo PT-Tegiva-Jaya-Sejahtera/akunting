@@ -127,6 +127,10 @@ templ navIcon(name string) {
 			<path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/>
 		} else if name == "bank" {
 			<path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 10l9-6 9 6M5 10v9m4-9v9m6-9v9m4-9v9M3 19h18"/>
+		} else if name == "trialbalance" {
+			<path stroke-linecap="round" stroke-linejoin="round" d="M12 3v18m0 0h4m-4 0H8M7 6h10M7 6l-3.5 7a3.5 3.5 0 007 0L7 6zm10 0l-3.5 7a3.5 3.5 0 007 0L17 6z"/>
+		} else if name == "closing" {
+			<path stroke-linecap="round" stroke-linejoin="round" d="M20 7H4a1 1 0 00-1 1v11a1 1 0 001 1h16a1 1 0 001-1V8a1 1 0 00-1-1zM3 7l2-4h14l2 4M9 12h6"/>
 		} else if name == "invitations" {
 			<path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z"/>
 		}
@@ -135,8 +139,9 @@ templ navIcon(name string) {
 
 // navLinks merender menu sidebar sesuai urutan kerja akuntansi:
 // Dashboard, Jurnal Umum, Buku Besar, Piutang Usaha, Hutang Usaha,
-// Aset Tetap, Laporan Laba Rugi,
-// Neraca, Jurnal Penyesuaian, Kertas Kerja, Laporan Keuangan, lalu Periode,
+// Aset Tetap, Persediaan, Kas & Bank, Neraca Saldo, Jurnal Penyesuaian,
+// Kertas Kerja, Laporan Keuangan (L/R, Perubahan Modal, Posisi Keuangan,
+// Arus Kas, Catatan), Jurnal Penutup, NS Setelah Penutupan, lalu Periode,
 // Undangan, dan Pengaturan. Dipanggil dua kali (sidebar desktop dan laci
 // mobile), jadi cukup diubah di satu tempat.
 templ navLinks(shell Shell) {
@@ -173,25 +178,9 @@ templ navLinks(shell Shell) {
 			@navIcon("bank")
 			Kas & Bank
 		</a>
-		<a href={ companyPath(shell.CompanyKey, "/reports/pl") } class={ navClass(shell.Active == "pl") }>
-			@navIcon("pl")
-			Laporan Laba Rugi
-		</a>
-		<a href={ companyPath(shell.CompanyKey, "/reports/bs") } class={ navClass(shell.Active == "bs") }>
-			@navIcon("bs")
-			Neraca
-		</a>
-		<a href={ companyPath(shell.CompanyKey, "/reports/equity") } class={ navClass(shell.Active == "equity") }>
-			@navIcon("statements")
-			Perubahan Ekuitas
-		</a>
-		<a href={ companyPath(shell.CompanyKey, "/reports/cashflow") } class={ navClass(shell.Active == "cashflow") }>
-			@navIcon("statements")
-			Arus Kas
-		</a>
-		<a href={ companyPath(shell.CompanyKey, "/reports/notes") } class={ navClass(shell.Active == "notes") }>
-			@navIcon("statements")
-			Catatan (CaLK)
+		<a href={ companyPath(shell.CompanyKey, "/trial-balance") } class={ navClass(shell.Active == "trialbalance") }>
+			@navIcon("trialbalance")
+			Neraca Saldo
 		</a>
 		<a href={ companyPath(shell.CompanyKey, "/adjustments") } class={ navClass(shell.Active == "adjustments") }>
 			@navIcon("adjustments")
@@ -204,6 +193,34 @@ templ navLinks(shell Shell) {
 		<a href={ companyPath(shell.CompanyKey, "/reports") } class={ navClass(shell.Active == "statements") }>
 			@navIcon("statements")
 			Laporan Keuangan
+		</a>
+		<a href={ companyPath(shell.CompanyKey, "/reports/pl") } class={ navClass(shell.Active == "pl") }>
+			@navIcon("pl")
+			Laporan Laba Rugi
+		</a>
+		<a href={ companyPath(shell.CompanyKey, "/reports/equity") } class={ navClass(shell.Active == "equity") }>
+			@navIcon("statements")
+			Perubahan Modal
+		</a>
+		<a href={ companyPath(shell.CompanyKey, "/reports/bs") } class={ navClass(shell.Active == "bs") }>
+			@navIcon("bs")
+			Posisi Keuangan
+		</a>
+		<a href={ companyPath(shell.CompanyKey, "/reports/cashflow") } class={ navClass(shell.Active == "cashflow") }>
+			@navIcon("statements")
+			Arus Kas
+		</a>
+		<a href={ companyPath(shell.CompanyKey, "/reports/notes") } class={ navClass(shell.Active == "notes") }>
+			@navIcon("statements")
+			Catatan (CaLK)
+		</a>
+		<a href={ companyPath(shell.CompanyKey, "/closing") } class={ navClass(shell.Active == "closing") }>
+			@navIcon("closing")
+			Jurnal Penutup
+		</a>
+		<a href={ companyPath(shell.CompanyKey, "/trial-balance/post-closing") } class={ navClass(shell.Active == "postclosing") }>
+			@navIcon("trialbalance")
+			NS Setelah Penutupan
 		</a>
 		<div class="my-2 border-t border-line"></div>
 		if shell.Role == "owner" || shell.Role == "admin" {

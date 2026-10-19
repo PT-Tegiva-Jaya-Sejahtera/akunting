@@ -34,11 +34,15 @@ templ normalOptions(current db.NormalBalance) {
 }
 
 // systemRoleOptions merender pilihan peran sistem akun. Akun Saldo Laba
-// dipakai sebagai tujuan jurnal penutup saat tutup buku periode.
+// dipakai sebagai tujuan jurnal penutup saat tutup buku periode; akun Kas
+// Kecil dipisahkan dari Kas dan Bank untuk dana belanja harian (imprest).
 templ systemRoleOptions(current string) {
 	<option value="" selected?={ current == "" }>Akun biasa</option>
 	<option value={ models.SystemRoleRetainedEarnings } selected?={ current == models.SystemRoleRetainedEarnings }>
 		Saldo Laba (tutup buku)
+	</option>
+	<option value={ models.SystemRoleKasKecil } selected?={ current == models.SystemRoleKasKecil }>
+		Kas Kecil (petty cash)
 	</option>
 }
 

@@ -7,8 +7,9 @@ import (
 	"accounting/internal/models"
 )
 
-// JournalsListPage menampilkan daftar jurnal perusahaan.
-templ JournalsListPage(shell Shell, company db.Company, journals []db.Journal) {
+// JournalsListPage menampilkan daftar jurnal perusahaan beserta kartu
+// "Posisi Semua Akun" (seluruh baris buku dengan total di bagian bawah).
+templ JournalsListPage(shell Shell, company db.Company, journals []db.Journal, overview models.JournalsOverviewView) {
 	@Layout(shell) {
 		<div class="flex flex-wrap items-end justify-between gap-4">
 			<div class="min-w-0">
@@ -76,6 +77,78 @@ templ JournalsListPage(shell Shell, company db.Company, journals []db.Journal) {
 						</tbody>
 					</table>
 				</div>
+			}
+		</div>
+
+		<div class={ cardClass + " mt-6" }>
+			<div class={ cardTitleClass }>
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<span>Posisi Semua Akun (Semua Jurnal)</span>
+					<form method="get" class="flex items-end gap-2">
+						<select name="year" class={ inputClass + " w-44 py-1.5" }>
+							<option value="0" selected?={ overview.SelectedYear == 0 }>Semua tahun</option>
+							for _, y := range overview.Years {
+								<option value={ strconv.Itoa(y) } selected?={ y == overview.SelectedYear }>{ strconv.Itoa(y) }</option>
+							}
+						</select>
+						<button type="submit" class={ btnSecondary }>Tampilkan</button>
+					</form>
+				</div>
+			</div>
+			if len(overview.Rows) == 0 {
+				<div class="px-5 py-6 text-sm text-muted">Belum ada baris jurnal pada tahun terpilih.</div>
+			} else {
+				<div class="overflow-x-auto">
+					<table class="w-full min-w-[900px] text-sm">
+						<thead>
+							<tr class="border-b border-line bg-panel/60">
+								<th class={ thClass }>Tanggal</th>
+								<th class={ thClass }>Referensi</th>
+								<th class={ thClass }>Kode</th>
+								<th class={ thClass }>Nama Akun</th>
+								<th class={ thClass }>Keterangan</th>
+								<th class={ thClass + " text-right" }>Debit</th>
+								<th class={ thClass + " text-right" }>Kredit</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-line">
+							for _, l := range overview.Rows {
+								<tr class="transition-colors hover:bg-panel/60">
+									<td class="num px-5 py-2.5 text-xs text-muted">{ l.DateLabel }</td>
+									<td class="num px-5 py-2.5 text-label">
+										{ l.Reference }
+										if l.IsAdjusting {
+											<span class="ml-2 inline-flex rounded-input bg-accent-wash px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">Penyesuaian</span>
+										}
+									</td>
+									<td class="num px-5 py-2.5 text-label">{ l.AccountCode }</td>
+									<td class="px-5 py-2.5 text-label">{ l.AccountName }</td>
+									<td class="px-5 py-2.5 text-xs text-muted">{ l.Description }</td>
+									<td class="num px-5 py-2.5 text-right text-ink">
+										if l.Debit != 0 {
+											{ models.FormatCents(l.Debit) }
+										}
+									</td>
+									<td class="num px-5 py-2.5 text-right text-ink">
+										if l.Credit != 0 {
+											{ models.FormatCents(l.Credit) }
+										}
+									</td>
+								</tr>
+							}
+						</tbody>
+						<tfoot>
+							<tr class="border-t-2 border-line bg-panel/60 font-semibold">
+								<td class="num px-5 py-3" colspan="5">Total</td>
+								<td class="num px-5 py-3 text-right text-ink">{ models.FormatCents(overview.TotalDebit) }</td>
+								<td class="num px-5 py-3 text-right text-ink">{ models.FormatCents(overview.TotalCredit) }</td>
+							</tr>
+						</tfoot>
+					</table>
+				</div>
+				if overview.Truncated {
+					<div class="border-t border-line px-5 py-3 text-xs text-muted">Tampilan dipotong pada { strconv.Itoa(len(overview.Rows)) } baris pertama; pilih tahun tertentu untuk melihat sisanya.</div>
+				}
 			}
 		</div>
 	}

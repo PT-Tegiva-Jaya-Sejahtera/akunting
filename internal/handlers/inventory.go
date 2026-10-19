@@ -102,21 +102,81 @@ func (h *Handlers) buildInventoryView(r *http.Request, company db.Company, role 
 		return models.InventoryView{}, err
 	}
 	var buku models.InventoryCOABuku
+	persediaanCode := ""
 	for _, t := range totals {
 		if t.PsakLine == models.PsakPersediaan {
 			buku.LedgerCents += models.NumericToCents(t.TotalDebit) - models.NumericToCents(t.TotalCredit)
+			if persediaanCode == "" {
+				persediaanCode = t.Code
+			}
 		}
 	}
 
+	// Rekap stok seluruh barang: kumulatif masuk dan keluar beserta tanggal
+	// terakhirnya, dan sisa stok per item (no, kode akun persediaan, nama
+	// barang, quantity, tgl masuk, tgl keluar, sisa).
+	type rekapAgg struct {
+		in, out         int64
+		lastIn, lastOut time.Time
+		hasIn, hasOut   bool
+	}
+	agg := map[int64]*rekapAgg{}
+	for _, m := range calc.Movements {
+		a, ok := agg[m.ItemID]
+		if !ok {
+			a = &rekapAgg{}
+			agg[m.ItemID] = a
+		}
+		if m.MovementType == models.MovementOut {
+			a.out += m.QtyMills
+			if !a.hasOut || m.Date.After(a.lastOut) {
+				a.lastOut, a.hasOut = m.Date, true
+			}
+		} else {
+			a.in += m.QtyMills
+			if !a.hasIn || m.Date.After(a.lastIn) {
+				a.lastIn, a.hasIn = m.Date, true
+			}
+		}
+	}
+	rekap := make([]models.InventoryRekapRow, 0, len(items))
+	for i, it := range items {
+		row := models.InventoryRekapRow{
+			No:          i + 1,
+			AccountCode: persediaanCode,
+			Name:        it.Name,
+			Unit:        it.Unit,
+		}
+		a := agg[it.ID]
+		if a != nil {
+			row.QtyInLabel = models.FormatQty(a.in)
+			row.QtyOutLabel = models.FormatQty(a.out)
+			row.SisaLabel = models.FormatQty(a.in - a.out)
+			if a.hasIn {
+				row.LastInLabel = models.FormatDateID(a.lastIn)
+			}
+			if a.hasOut {
+				row.LastOutLabel = models.FormatDateID(a.lastOut)
+			}
+		} else {
+			row.QtyInLabel = "-"
+			row.QtyOutLabel = "-"
+			row.SisaLabel = "-"
+		}
+		rekap = append(rekap, row)
+	}
+
 	return models.InventoryView{
-		AsOfISO:    asOf.Format("2006-01-02"),
-		AsOfLabel:  models.FormatDateID(asOf),
-		Rows:       calc.Rows,
-		TotalCents: calc.TotalCents,
-		Movements:  calc.Movements,
-		Items:      items,
-		Buku:       buku,
-		CanManage:  role == appmw.RoleAdmin || role == appmw.RoleOwner,
+		AsOfISO:     asOf.Format("2006-01-02"),
+		AsOfLabel:   models.FormatDateID(asOf),
+		Rows:        calc.Rows,
+		TotalCents:  calc.TotalCents,
+		Movements:   calc.Movements,
+		Items:       items,
+		Buku:        buku,
+		Rekap:       rekap,
+		AccountCode: persediaanCode,
+		CanManage:   role == appmw.RoleAdmin || role == appmw.RoleOwner,
 	}, nil
 }
 

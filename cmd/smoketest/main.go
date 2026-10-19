@@ -245,6 +245,7 @@ func main() {
 	// Laba Rugi dan Jumlah Laba Rugi Komprehensif.
 	evidenceOCI(ctx, pool, q, userID)
 	evidenceBank(ctx, pool, q, userID)
+	evidenceRevisi(ctx, pool, q, userID)
 
 	fmt.Println("SEMUA SMOKE TEST LULUS")
 }

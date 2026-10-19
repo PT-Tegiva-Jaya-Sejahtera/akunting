@@ -9,11 +9,19 @@ import (
 // periode terpilih, dengan pilihan melihat mutasi satu akun.
 templ LedgerPage(shell Shell, company db.Company, view models.LedgerView) {
 	@Layout(shell) {
-		@pageHeader("Buku Besar", company.Name+" · "+view.PeriodName+" ("+view.PeriodStatus+") · "+view.DateFromISO+" s.d. "+view.DateToISO) {
+		@pageHeader("Buku Besar", company.Name+" · "+view.PeriodName+" · "+view.DateFromISO+" s.d. "+view.DateToISO) {
 			<a href={ companyPath(company.UrlKey, "/accounts") } class={ btnSecondary }>Kelola Akun</a>
 			<a href={ companyPath(company.UrlKey, "/journals/new") } class={ btnPrimary }>Jurnal Umum Baru</a>
 		}
 		<form method="get" class={ cardClass + " mt-6 flex flex-wrap items-end gap-4 px-5 py-4" }>
+			<div>
+				<label class="mb-1.5 block text-sm font-medium text-ink" for="from">Dari Bulan</label>
+				<input type="month" id="from" name="from" value={ view.MonthFrom } class={ inputClass }/>
+			</div>
+			<div>
+				<label class="mb-1.5 block text-sm font-medium text-ink" for="to">Sampai Bulan</label>
+				<input type="month" id="to" name="to" value={ view.MonthTo } class={ inputClass }/>
+			</div>
 			<div>
 				<label class="mb-1.5 block text-sm font-medium text-ink" for="period">Periode akuntansi</label>
 				<select id="period" name="period" class={ inputClass + " w-56" }>
@@ -26,6 +34,7 @@ templ LedgerPage(shell Shell, company db.Company, view models.LedgerView) {
 				</select>
 			</div>
 			<button type="submit" class={ btnPrimary }>Tampilkan</button>
+			<div class="pb-2 text-xs text-muted">Isi Dari Bulan dan Sampai Bulan untuk rentang bebas (boleh lintas tahun); bila kosong, periode akuntansi yang dipakai.</div>
 		</form>
 
 		if view.Account != nil {
