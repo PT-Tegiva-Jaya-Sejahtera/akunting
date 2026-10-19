@@ -136,9 +136,11 @@ func (h *Handlers) LoginPost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "400 form tidak valid", http.StatusBadRequest)
 		return
 	}
-	username := r.FormValue("username")
+	username := sanitizeUsername(r.FormValue("username"))
 	password := r.FormValue("password")
 
+	// Username selalu dinormalkan sama seperti saat daftar (huruf kecil,
+	// tanpa spasi): login dengan Nelivaayu dan nelivaayu harus sama minta.
 	user, err := h.DB.GetUserByUsername(r.Context(), username)
 	if err != nil {
 		// Username tidak ditemukan: tetap jalankan bcrypt terhadap hash
