@@ -1,8 +1,20 @@
-// journalref.js: nomor referensi jurnal terisi otomatis dari akun baris
-// pertama: kode akun + nama akun (tanpa spasi), contoh "1-1000 Kas".
-// Baru mengisi jika kolom referensi masih kosong ATAU belum pernah diedit
-// manual, supaya isian milik pengguna tidak tertimpa.
+// journalref.js: nomor referensi jurnal terisi otomatis berupa 10 digit angka
+// acak dengan digit pertama 1-9 (tidak boleh 0). Fungsi: penanda pelacakan
+// jurnal yang tidak berpola; kesamaan referensi antar jurnal ditolak database
+// (UNIQUE per perusahaan) dan diberi pesan jelas. Isian manual pengguna
+// selalu dihormati; nomor hanya dibuat bila kolom masih kosong.
 (function () {
+  function nomorAcak() {
+    var buf = new Uint8Array(10);
+    crypto.getRandomValues(buf);
+    var b = [];
+    b.push(String(1 + (buf[0] % 9)));
+    for (var i = 1; i < 10; i++) {
+      b.push(String(buf[i] % 10));
+    }
+    return b.join('');
+  }
+
   function init(root) {
     var form = (root || document).querySelector('#journal-form');
     if (!form || form.hasAttribute('data-ref-ready')) return;
@@ -10,28 +22,12 @@
     var ref = form.querySelector('#reference');
     if (!ref) return;
     var edited = ref.value.trim() !== '';
-    ref.addEventListener('input', function () { edited = ref.value.trim() !== ''; });
-
-    function barisPertama() {
-      return form.querySelector('#journal-lines tr select[name="account_id"]');
-    }
-    function isiOtomatis() {
-      if (edited) return;
-      var sel = barisPertama();
-      if (!sel || sel.value === '0' || !sel.selectedIndex) return;
-      var t = (sel.options[sel.selectedIndex].textContent || '').trim();
-      var i = t.indexOf(' - ');
-      if (i < 0) return;
-      var kode = t.slice(0, i);
-      var nama = t.slice(i + 3).replace(/\s+/g, '-');
-      ref.value = kode + ' ' + nama;
-    }
-    form.addEventListener('change', function (e) {
-      if (e.target && e.target.name === 'account_id' && e.target === barisPertama()) {
-        isiOtomatis();
-      }
+    ref.addEventListener('input', function () {
+      edited = ref.value.trim() !== '';
     });
-    isiOtomatis();
+    if (!edited && ref.value.trim() === '') {
+      ref.value = nomorAcak();
+    }
   }
 
   document.addEventListener('DOMContentLoaded', function () { init(document); });

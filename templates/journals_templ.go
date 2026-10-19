@@ -942,7 +942,7 @@ func JournalFormPage(shell Shell, company db.Company, accounts []db.Account, par
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<input id=\"reference\" name=\"reference\" required placeholder=\"otomatis dari akun baris pertama, boleh diubah\" value=\"")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<input id=\"reference\" name=\"reference\" required placeholder=\"otomatis 10 digit acak; tidak boleh sama\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
