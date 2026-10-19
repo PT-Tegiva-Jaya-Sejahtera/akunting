@@ -1,0 +1,6 @@
+# Temuan gitleaks yang sudah diperiksa dan ditetapkan false positive:
+# keduanya konstanta kode uji, bukan kredensial nyata.
+# 1. UrlKey perusahaan bukti smoketest (string tetap untuk httptest).
+8c2f4bd15294ec3f7c0a1a7ef4f070056ee4b77f:cmd/smoketest/inventory.go:generic-api-key:42
+# 2. Konstanta alfabet kunci URL perusahaan di models/key.go.
+a72f4b3411e994152488eab25feedb4db40fe8e7:internal/models/key.go:generic-api-key:11

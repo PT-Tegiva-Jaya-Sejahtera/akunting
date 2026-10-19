@@ -25,7 +25,7 @@ case "${1:-}" in
         echo "preview sudah jalan (pid $(cat "$PID_FILE"))."
         exit 0
     fi
-    if ss -tln 2>/dev/null | grep -q ":$PORT "; then
+    if ss -tln 2>/dev/null | grep -q "127.0.0.1:$PORT "; then
         echo "port $PORT sudah terpakai proses lain. Matikan itu dulu atau pakai AKUNTING_PORT=<lain>."
         exit 1
     fi
