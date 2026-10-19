@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -113,13 +114,14 @@ func (h *Handlers) PeriodClosePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	retained, err := h.DB.GetAccountBySystemRole(r.Context(), db.GetAccountBySystemRoleParams{
-		CompanyID:  company.ID,
-		SystemRole: models.SystemRoleRetainedEarnings,
-	})
+	ikhtisarID, priveID, modalID, err := accounting.ProvisionClosingAccounts(r.Context(), h.DB, company.ID)
 	if err != nil {
-		h.renderPeriods(w, r, "Tutup buku butuh akun Saldo Laba. Tandai satu akun ekuitas "+
-			"sebagai \"Saldo Laba\" di halaman Akun lebih dulu.")
+		if errors.Is(err, accounting.ErrNoClosingTarget) {
+			h.renderPeriods(w, r, "Tutup buku butuh akun ekuitas Modal atau akun bertanda "+
+				"\"Saldo Laba\". Tandai salah satu di halaman Akun lebih dulu.")
+			return
+		}
+		http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
 		return
 	}
 
@@ -128,7 +130,7 @@ func (h *Handlers) PeriodClosePost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "500 kesalahan server", http.StatusInternalServerError)
 		return
 	}
-	lines, net := accounting.ClosingLines(rows, retained.ID)
+	lines, net := accounting.IkhtisarClosingLines(rows, ikhtisarID, modalID, priveID)
 
 	if len(lines) > 0 {
 		params := h.systemJournalParams(company.ID, user.UserID, period.EndDate.Time,

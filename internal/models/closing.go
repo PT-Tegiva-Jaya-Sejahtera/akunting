@@ -16,12 +16,14 @@ type ClosingLine struct {
 type ClosingJournal struct {
 	PeriodName string
 	DateLabel  string
-	Reference  string
-	Memo       string
-	Status     string // status periode terkait: open/closed
-	PeriodID   int64
-	Lines      []ClosingLine
-	Total      int64
+	// DateShort adalah tanggal jurnal dd/mm/yyyy untuk kolom Tanggal.
+	DateShort string
+	Reference string
+	Memo      string
+	Status    string // status periode terkait: open/closed
+	PeriodID  int64
+	Lines     []ClosingLine
+	Total     int64
 }
 
 // ClosingView adalah data halaman jurnal penutup. Periods dipakai untuk

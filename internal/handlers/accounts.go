@@ -157,7 +157,8 @@ func validateAccountType(accType db.AccountType, subType string, normal db.Norma
 // validateSystemRole memastikan hanya peran sistem yang dikenal yang dipakai.
 func validateSystemRole(role string) error {
 	switch role {
-	case "", models.SystemRoleRetainedEarnings, models.SystemRoleKasKecil:
+	case "", models.SystemRoleRetainedEarnings, models.SystemRoleKasKecil,
+		models.SystemRoleIkhtisar, models.SystemRolePrive:
 		return nil
 	}
 	return errString("Peran sistem akun tidak dikenal.")

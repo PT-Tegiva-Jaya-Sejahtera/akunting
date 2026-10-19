@@ -58,6 +58,7 @@ func (h *Handlers) ClosingGet(w http.ResponseWriter, r *http.Request) {
 		}
 		cj := models.ClosingJournal{
 			DateLabel: j.JournalDate.Time.Format("02 Jan 2006"),
+			DateShort: models.FormatDateShort(j.JournalDate.Time),
 			Reference: j.Reference,
 			Memo:      j.Memo,
 			PeriodID:  j.PeriodID.Int64,

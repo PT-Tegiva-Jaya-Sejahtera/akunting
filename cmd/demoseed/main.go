@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -56,6 +57,7 @@ var daftarAkun = []coa{
 	{"2-2100", "Utang Bank Jangka Panjang", db.AccountTypeLiability, models.SubLongLiability, db.NormalBalanceCredit, ""},
 	{"3-3000", "Modal Disetor", db.AccountTypeEquity, models.SubEquity, db.NormalBalanceCredit, ""},
 	{"3-3010", "Saldo Laba", db.AccountTypeEquity, models.SubEquity, db.NormalBalanceCredit, models.SystemRoleRetainedEarnings},
+	{"3-3020", "Prive", db.AccountTypeEquity, models.SubEquity, db.NormalBalanceDebit, models.SystemRolePrive},
 	{"4-4000", "Pendapatan Sewa", db.AccountTypeRevenue, models.SubRevenue, db.NormalBalanceCredit, ""},
 	{"4-4010", "Pendapatan Service Charge", db.AccountTypeRevenue, models.SubRevenue, db.NormalBalanceCredit, ""},
 	{"4-4020", "Pendapatan Bunga", db.AccountTypeRevenue, models.SubRevenue, db.NormalBalanceCredit, ""},
@@ -65,6 +67,7 @@ var daftarAkun = []coa{
 	{"5-5030", "Beban Penyusutan", db.AccountTypeExpense, models.SubExpense, db.NormalBalanceDebit, ""},
 	{"5-5040", "Beban Bunga", db.AccountTypeExpense, models.SubExpense, db.NormalBalanceDebit, ""},
 	{"5-5050", "Beban Pajak Penghasilan", db.AccountTypeExpense, models.SubExpense, db.NormalBalanceDebit, ""},
+	{"1-1400", "Persediaan Operasional", db.AccountTypeAsset, models.SubCurrentAsset, db.NormalBalanceDebit, ""},
 }
 
 func main() {
@@ -136,6 +139,8 @@ func main() {
 			"DELETE FROM journals WHERE company_id = $1",
 			"DELETE FROM accounts WHERE company_id = $1",
 			"DELETE FROM fiscal_periods WHERE company_id = $1",
+			"DELETE FROM inventory_movements WHERE company_id = $1",
+			"DELETE FROM inventory_items WHERE company_id = $1",
 		} {
 			if _, err := pool.Exec(ctx, stmt, company.ID); err != nil {
 				log.Fatalf("gagal membersihkan data demo: %v", err)
@@ -266,13 +271,18 @@ func main() {
 		{"5-5000", rp(85_000_000), 0},
 		{"2-2000", 0, rp(85_000_000)},
 	})
+	simpan(ctx, q, company.ID, userID, tanggal(2025, 6, 30), "J2025-PRIVE", "Pengambilan pribadi pemilik", accID, []line{
+		{"3-3020", rp(45_000_000), 0},
+		{"1-1010", 0, rp(45_000_000)},
+	})
 	simpan(ctx, q, company.ID, userID, tanggal(2025, 12, 20), "J2025-PPH", "Beban pajak penghasilan 2025", accID, []line{
 		{"5-5050", rp(90_000_000), 0},
 		{"2-2020", 0, rp(90_000_000)},
 	})
 	fmt.Println("Jurnal 2025 tersimpan.")
 
-	// 7. Tutup buku 2025: jurnal penutup ke Saldo Laba, lalu periode dikunci.
+	// 7. Tutup buku 2025: jurnal penutup alur Ikhtisar Laba Rugi, lalu periode
+	// dikunci. Akun prive dan Ikhtisar disiapkan sama seperti handler tutup buku.
 	rows, err := q.ListAccountTotalsByPeriod(ctx, db.ListAccountTotalsByPeriodParams{
 		CompanyID: company.ID,
 		DateFrom:  p2025.StartDate,
@@ -281,7 +291,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("gagal membaca saldo 2025: %v", err)
 	}
-	closing, net := accounting.ClosingLines(rows, accID["3-3010"])
+	ikhtisarID, priveID, modalID, err := accounting.ProvisionClosingAccounts(ctx, q, company.ID)
+	if err != nil {
+		log.Fatalf("gagal menyiapkan akun penutup: %v", err)
+	}
+	closing, net := accounting.IkhtisarClosingLines(rows, ikhtisarID, modalID, priveID)
 	if len(closing) > 0 {
 		simpanSystemByAkun(ctx, q, company.ID, userID, p2025.EndDate,
 			"PENUTUP-"+fmt.Sprint(p2025.ID),
@@ -294,7 +308,7 @@ func main() {
 	}); err != nil {
 		log.Fatalf("gagal menutup periode 2025: %v", err)
 	}
-	fmt.Printf("Tahun buku 2025 ditutup, laba periode %s dipindahkan ke Saldo Laba.\n", models.FormatCents(net))
+	fmt.Printf("Tahun buku 2025 ditutup, laba periode %s dipindahkan ke modal lewat Ikhtisar Laba Rugi.\n", models.FormatCents(net))
 
 	// 8. Jurnal 2026 (Januari sampai September) dengan periode masih terbuka.
 	for bulan := 1; bulan <= 9; bulan++ {
@@ -353,6 +367,126 @@ func main() {
 			{"4-4020", 0, rp(3_500_000)},
 		})
 	fmt.Println("Jurnal 2026 dan 3 jurnal penyesuaian tersimpan (periode masih terbuka).")
+
+	// 9. Persediaan operasional (PSAK 202): daftar item, mutasi stok
+	// masuk/keluar, dan jurnal pembelian/pemakaian agar saldo akun
+	// persediaan di buku besar same dengan register modul.
+	type itemDef struct{ name, sku, unit string }
+	type moveDef struct {
+		item  int
+		tipe  string
+		hari  int
+		bulan time.Month
+		qty   int64
+		cost  int64 // harga beli per satuan (rupiah), hanya untuk masuk
+	}
+	items := []itemDef{
+		{"Kertas HVS A4", "HVS-A4", "rim"},
+		{"Galon Air Mineral", "GLN-19L", "galon"},
+		{"Sparepart Lampu LED", "LED-9W", "pcs"},
+	}
+	itemIDs := make([]int64, len(items))
+	itemRows := make([]db.InventoryItem, len(items))
+	for i, it := range items {
+		var errI error
+		itemRows[i], errI = q.CreateInventoryItem(ctx, db.CreateInventoryItemParams{
+			CompanyID: company.ID, Name: it.name, Sku: it.sku, Unit: it.unit,
+		})
+		if errI != nil {
+			log.Fatalf("gagal membuat item persediaan %s: %v", it.name, errI)
+		}
+		itemIDs[i] = itemRows[i].ID
+	}
+	moveDefs := []moveDef{
+		{0, models.MovementIn, 6, time.June, 40, 55_000},
+		{0, models.MovementIn, 6, time.July, 20, 60_000},
+		{0, models.MovementOut, 6, time.August, 25, 0},
+		{0, models.MovementOut, 6, time.September, 5, 0},
+		{1, models.MovementIn, 4, time.July, 60, 21_000},
+		{1, models.MovementOut, 5, time.August, 20, 0},
+		{2, models.MovementIn, 1, time.September, 12, 35_000},
+		{2, models.MovementOut, 2, time.September, 2, 0},
+	}
+	// Hitung nilai mutasi lewat model yang sama dengan halaman persediaan
+	// supaya jurnal dan register selalu sejajar. BuildInventory memproses
+	// mutasi urut (tanggal, id), jadi moveDefs diurutkan lebih dulu dan ID
+	// diberikan setelah urutan final supaya calc.Movements[i] selalu pas
+	// dengan moveDefs[i].
+	sort.SliceStable(moveDefs, func(a, b int) bool {
+		if moveDefs[a].bulan != moveDefs[b].bulan {
+			return moveDefs[a].bulan < moveDefs[b].bulan
+		}
+		return moveDefs[a].hari < moveDefs[b].hari
+	})
+	moves := make([]models.InventoryMovement, 0, len(moveDefs))
+	for i, m := range moveDefs {
+		qtyMills := m.qty * 1000
+		var costCents int64
+		if m.tipe == models.MovementIn {
+			costCents = rp(m.cost)
+		}
+		moves = append(moves, models.InventoryMovement{
+			ID: int64(i + 1), CompanyID: company.ID, ItemID: itemIDs[m.item],
+			Date:          time.Date(2026, m.bulan, m.hari, 0, 0, 0, 0, time.UTC),
+			QtyMills:      qtyMills,
+			UnitCostCents: costCents,
+			MovementType:  m.tipe,
+		})
+	}
+	demoItems := make([]models.InventoryItem, 0, len(items))
+	for i, it := range items {
+		demoItems = append(demoItems, models.InventoryItem{
+			ID: itemIDs[i], CompanyID: company.ID, Name: it.name, SKU: it.sku, Unit: it.unit,
+		})
+	}
+	calc, err := models.BuildInventory(demoItems, moves)
+	if err != nil {
+		log.Fatalf("gagal menghitung persediaan demo: %v", err)
+	}
+	for i, m := range moveDefs {
+		qtyNum, errQ := models.MillsToNumeric(m.qty * 1000)
+		if errQ != nil {
+			log.Fatalf("gagal mengubah jumlah: %v", errQ)
+		}
+		var costNum pgtype.Numeric
+		switch m.tipe {
+		case models.MovementIn:
+			costNum, _ = models.CentsToNumeric(rp(m.cost))
+		default:
+			costNum, _ = models.CentsToNumeric(calc.Movements[i].AppliedCostCents)
+		}
+		if _, err := q.CreateInventoryMovement(ctx, db.CreateInventoryMovementParams{
+			CompanyID: company.ID, ItemID: itemIDs[m.item],
+			Date:         tanggal(2026, int(m.bulan), m.hari),
+			Quantity:     qtyNum,
+			UnitCost:     costNum,
+			MovementType: db.InventoryMovementType(m.tipe),
+		}); err != nil {
+			log.Fatalf("gagal menyimpan mutasi persediaan: %v", err)
+		}
+		// Jurnal buku besar: pembelian (persediaan D, kas K) atau pemakaian
+		// operasional (beban D, persediaan K). Nilai dari model yang sama.
+		var nilai int64
+		if m.tipe == models.MovementIn {
+			nilai = rp(m.cost) * m.qty
+		} else {
+			nilai = calc.Movements[i].ValueCents
+		}
+		var jurnalLines []line
+		if m.tipe == models.MovementIn {
+			jurnalLines = []line{{"1-1400", nilai, 0}, {"1-1010", 0, nilai}}
+		} else {
+			jurnalLines = []line{{"5-5000", nilai, 0}, {"1-1400", 0, nilai}}
+		}
+		refs := "MASUK"
+		if m.tipe == models.MovementOut {
+			refs = "PAKAI"
+		}
+		simpan(ctx, q, company.ID, userID, tanggal(2026, int(m.bulan), m.hari),
+			ref("J2026-INV", m.item+1, fmt.Sprintf("%d", i+1)+"-"+refs),
+			"Pembelian persediaan operasional", accID, jurnalLines)
+	}
+	fmt.Println("Persediaan demo: 3 item, 8 mutasi, 8 jurnal terkait tersimpan.")
 	fmt.Printf("SELESAI. Perusahaan: %s (id %d), periode: %s & %s\n",
 		company.Name, company.ID, p2025.Name, p2026.Name)
 }

@@ -80,12 +80,21 @@ templ ClosingPage(shell Shell, company db.Company, view models.ClosingView) {
 						</div>
 						<div class="overflow-x-auto">
 							<table class="w-full min-w-[720px] text-sm">
+								<thead>
+									<tr class="border-b border-line bg-panel/60">
+										<th class={ thClass }>Tanggal</th>
+										<th class={ thClass }>Kode</th>
+										<th class={ thClass }>Nama Akun</th>
+										<th class={ thClass + " text-right" }>Debit</th>
+										<th class={ thClass + " text-right" }>Kredit</th>
+									</tr>
+								</thead>
 								<tbody class="divide-y divide-line">
 									for _, l := range cj.Lines {
 										<tr class="transition-colors hover:bg-panel/60">
+											<td class="num px-5 py-2.5 text-xs text-muted">{ cj.DateShort }</td>
 											<td class="num px-5 py-2.5 text-label">{ l.AccountCode }</td>
 											<td class="px-5 py-2.5 text-label">{ l.AccountName }</td>
-											<td class="px-5 py-2.5 text-xs text-muted">{ l.Description }</td>
 											<td class="num px-5 py-2.5 text-right text-ink">
 												if l.Debit != 0 {
 													{ view.Money(l.Debit) }

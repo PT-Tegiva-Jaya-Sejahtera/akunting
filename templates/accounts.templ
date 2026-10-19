@@ -44,6 +44,12 @@ templ systemRoleOptions(current string) {
 	<option value={ models.SystemRoleKasKecil } selected?={ current == models.SystemRoleKasKecil }>
 		Kas Kecil (petty cash)
 	</option>
+	<option value={ models.SystemRoleIkhtisar } selected?={ current == models.SystemRoleIkhtisar }>
+		Ikhtisar Laba Rugi (perantara tutup buku)
+	</option>
+	<option value={ models.SystemRolePrive } selected?={ current == models.SystemRolePrive }>
+		Prive (ditutup melawan modal)
+	</option>
 }
 
 // AccountsPage adalah menu kelola akun dengan sub-jenis PSAK 201.

@@ -36,8 +36,8 @@ func (h *Handlers) LedgerGet(w http.ResponseWriter, r *http.Request) {
 	var from, to time.Time
 	monthFrom := r.URL.Query().Get("from")
 	monthTo := r.URL.Query().Get("to")
-	startF, errF := time.Parse("2006-01", monthFrom)
-	endF, errT := time.Parse("2006-01", monthTo)
+	startF, errF := models.ParseMonthID(monthFrom)
+	endF, errT := models.ParseMonthID(monthTo)
 	switch {
 	// Rentang bulan bebas (lintas tahun) menimpa pilihan periode bila keduanya terisi.
 	case errF == nil && errT == nil:
@@ -46,8 +46,8 @@ func (h *Handlers) LedgerGet(w http.ResponseWriter, r *http.Request) {
 		if to.Before(from) {
 			from, to = to, from
 		}
-		view.MonthFrom = monthFrom
-		view.MonthTo = monthTo
+		view.MonthFrom = from.Format("2006-01")
+		view.MonthTo = to.Format("2006-01")
 		view.PeriodName = "Rentang bulan terpilih"
 		view.RangeLabel = "Rentang bebas " + models.FormatDateID(from) + " s.d. " + models.FormatDateID(to)
 	case selected != nil:
@@ -67,6 +67,8 @@ func (h *Handlers) LedgerGet(w http.ResponseWriter, r *http.Request) {
 	}
 	view.DateFromISO = from.Format("2006-01-02")
 	view.DateToISO = to.Format("2006-01-02")
+	view.DateFromLabel = models.FormatDateID(from)
+	view.DateToLabel = models.FormatDateID(to)
 
 	rows, err := h.periodRows(ctx, company.ID, from, to)
 	if err != nil {

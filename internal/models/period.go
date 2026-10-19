@@ -19,6 +19,15 @@ const (
 	// dari Kas dan Bank. Dana dicadangkan sekali (imprest), pengeluaran
 	// harian mengurangi akun ini, sisa kembalian tetap menjadi saldonya.
 	SystemRoleKasKecil = "kas_kecil"
+
+	// SystemRoleIkhtisar menandai akun Ikhtisar Laba Rugi: akun perantara
+	// pada jurnal penutup (pendapatan/beban dinolkan ke sini, lalu saldonya
+	// dipindah ke modal). Saldo akhirnya selalu nol setelah penutupan.
+	SystemRoleIkhtisar = "ikhtisar_labrug"
+
+	// SystemRolePrive menandai akun prive (pengambilan pribadi pemilik)
+	// yang ditutup melawan akun modal pada jurnal penutup.
+	SystemRolePrive = "prive"
 )
 
 // SystemRoleLabel menerjemahkan peran sistem ke label tampilan.
@@ -28,6 +37,10 @@ func SystemRoleLabel(role string) string {
 		return "Saldo Laba (tujuan tutup buku)"
 	case SystemRoleKasKecil:
 		return "Kas Kecil (petty cash)"
+	case SystemRoleIkhtisar:
+		return "Ikhtisar Laba Rugi (perantara jurnal penutup)"
+	case SystemRolePrive:
+		return "Prive (ditutup melawan modal)"
 	default:
 		return "-"
 	}
@@ -144,6 +157,43 @@ func DateFieldValue(iso string) string {
 		return ""
 	}
 	return FormatDateShort(t)
+}
+
+// MonthFieldValue mengubah nilai bulan "2006-01" menjadi teks isian
+// mm/yyyy untuk kolom pemilih bulan. Nilai yang tidak dikenali jadi kosong.
+func MonthFieldValue(s string) string {
+	t, err := time.Parse("2006-01", strings.TrimSpace(s))
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%02d/%d", int(t.Month()), t.Year())
+}
+
+// ErrMonthFormat dipakai ParseMonthID untuk pilih bulan yang tidak dikenali.
+var ErrMonthFormat = errors.New("format bulan tidak valid")
+
+// ParseMonthID membaca pilihan bulan dari isian "10/2026" (mask kolom) atau
+// "2026-10" (format server). Titik dan tanda hubung juga diterima sebagai
+// pemisah. Mengembalikan tanggal hari pertama bulan tersebut.
+func ParseMonthID(s string) (time.Time, error) {
+	s = strings.TrimSpace(strings.NewReplacer(".", "/", "-", "/").Replace(s))
+	parts := strings.Split(s, "/")
+	if len(parts) != 2 {
+		return time.Time{}, ErrMonthFormat
+	}
+	a, errA := strconv.Atoi(parts[0])
+	b, errB := strconv.Atoi(parts[1])
+	if errA != nil || errB != nil {
+		return time.Time{}, ErrMonthFormat
+	}
+	bulan, tahun := a, b
+	if len(parts[0]) == 4 {
+		bulan, tahun = b, a
+	}
+	if bulan < 1 || bulan > 12 || tahun < 1 {
+		return time.Time{}, ErrMonthFormat
+	}
+	return time.Date(tahun, time.Month(bulan), 1, 0, 0, 0, 0, time.UTC), nil
 }
 
 // ParseDateID membaca tanggal dari isian pengguna. Format yang diterima:

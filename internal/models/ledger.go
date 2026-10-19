@@ -26,10 +26,13 @@ type LedgerMovement struct {
 
 // LedgerView adalah data halaman Buku Besar.
 type LedgerView struct {
-	PeriodName       string
-	PeriodStatus     string
-	DateFromISO      string
-	DateToISO        string
+	PeriodName   string
+	PeriodStatus string
+	DateFromISO  string
+	DateToISO    string
+	// Label tanggal gaya "31 Desember 2026" untuk kepala halaman.
+	DateFromLabel    string
+	DateToLabel      string
 	Periods          []PeriodView
 	SelectedPeriodID int64
 	// Pilihan rentang bulan bebas (lintas tahun): format "2006-01". Bila
