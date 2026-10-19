@@ -528,7 +528,7 @@ func reportIdentity(view models.ReportView, reportTitle string, periodText strin
 func reportTitleFor(mode string) string {
 	switch mode {
 	case "pl":
-		return "Laporan Laba Rugi"
+		return "Laporan Laba Rugi dan Penghasilan Komprehensif Lain"
 	case "bs":
 		return "Neraca"
 	default:
@@ -899,7 +899,7 @@ func ReportsPage(shell Shell, company db.Company, view models.ReportView) templ.
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = reportIdentity(view, "Laporan Laba Rugi", "Untuk periode "+view.PeriodName).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = reportIdentity(view, "Laporan Laba Rugi dan Penghasilan Komprehensif Lain", "Untuk periode "+view.PeriodName).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -987,7 +987,39 @@ func ReportsPage(shell Shell, company db.Company, view models.ReportView) templ.
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("</tfoot></table><div class=\"border-t border-line px-5 py-3 text-xs text-muted\">Beban disajikan menurut sifat (PSAK 201 par. 99-105): setiap akun beban mewakili satu sifat beban. Biaya keuangan (par. 82 huruf b) dan beban pajak (par. 82 huruf d) disajikan sebagai pos tersendiri. Bagian penghasilan komprehensif lain (par. 82A) belum disajikan dan akan menyusul pada batch berikutnya.</div></div>")
+				templ_7745c5c3_Err = psakHeader("Penghasilan Komprehensif Lain (PSAK 201 par. 82A)").Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				for _, line := range view.OCIRecyclable {
+					templ_7745c5c3_Err = reportRow(view, line).Render(ctx, templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = psakSubtotal(view, "Jumlah Komponen Akan Direklasifikasi ke Laba Rugi", view.TotalOCIRecyclable, view.PriorTotalOCIRecyclable).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				for _, line := range view.OCINonRecyclable {
+					templ_7745c5c3_Err = reportRow(view, line).Render(ctx, templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = psakSubtotal(view, "Jumlah Komponen Tidak Direklasifikasi ke Laba Rugi", view.TotalOCINonRecyclable, view.PriorTotalOCINonRecyclable).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = psakSubtotal(view, "Jumlah Penghasilan Komprehensif Lain", view.TotalOCI, view.PriorTotalOCI).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = psakGrand(view, "Jumlah Laba Rugi Komprehensif", view.ComprehensiveIncome, view.PriorComprehensiveIncome).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("</tfoot></table><div class=\"border-t border-line px-5 py-3 text-xs text-muted\">Beban disajikan menurut sifat (PSAK 201 par. 99-105): setiap akun beban mewakili satu sifat beban. Biaya keuangan (par. 82 huruf b) dan beban pajak (par. 82 huruf d) disajikan sebagai pos tersendiri.\tBagian penghasilan komprehensif lain (par. 82A) disajikan setelah laba (rugi) periode berjalan, terbagi atas komponen yang akan dan tidak akan direklasifikasi ke laba rugi di kemudian hari.</div></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1113,7 +1145,7 @@ func ReportsPage(shell Shell, company db.Company, view models.ReportView) templ.
 					var templ_7745c5c3_Var55 string
 					templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.JoinStringErrs(view.Money(view.UnclosedProfit))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/reports.templ`, Line: 245, Col: 88}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/reports.templ`, Line: 257, Col: 88}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var55))
 					if templ_7745c5c3_Err != nil {
@@ -1126,7 +1158,7 @@ func ReportsPage(shell Shell, company db.Company, view models.ReportView) templ.
 					var templ_7745c5c3_Var56 string
 					templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.JoinStringErrs(view.PriorMoney(view.PriorUnclosedProfit))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/reports.templ`, Line: 246, Col: 100}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/reports.templ`, Line: 258, Col: 100}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var56))
 					if templ_7745c5c3_Err != nil {
@@ -1166,7 +1198,7 @@ func ReportsPage(shell Shell, company db.Company, view models.ReportView) templ.
 					var templ_7745c5c3_Var57 string
 					templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.JoinStringErrs(view.Money(view.TotalAssets - view.TotalLiabEquity))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/reports.templ`, Line: 265, Col: 102}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/reports.templ`, Line: 277, Col: 102}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var57))
 					if templ_7745c5c3_Err != nil {
@@ -1195,7 +1227,7 @@ func ReportsPage(shell Shell, company db.Company, view models.ReportView) templ.
 						var templ_7745c5c3_Var58 string
 						templ_7745c5c3_Var58, templ_7745c5c3_Err = templ.JoinStringErrs(view.Money(view.PriorTotalAssets - view.PriorTotalLiabEquity))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/reports.templ`, Line: 280, Col: 113}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/reports.templ`, Line: 292, Col: 113}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var58))
 						if templ_7745c5c3_Err != nil {

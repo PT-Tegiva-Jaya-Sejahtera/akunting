@@ -86,7 +86,17 @@ type ReportView struct {
 	TotalTaxExpense       int64
 	NetIncome             int64 // laba periode berjalan
 
-	// Kolom pembanding untuk total laba rugi.
+	// Penghasilan komprehensif lain (PSAK 201 par. 82A): mutasi akun
+	// ber-accounts.oci_kind selama periode, dipilah dua kelompok sesuai
+	// par. 82A (akan vs tidak akan direklasifikasi ke laba rugi).
+	OCIRecyclable    []ReportLine // akan direklasifikasi ke laba rugi
+	OCINonRecyclable []ReportLine // tidak akan direklasifikasi ke laba rugi
+	TotalOCIRecyclable    int64
+	TotalOCINonRecyclable int64
+	TotalOCI              int64 // jumlah penghasilan komprehensif lain
+	ComprehensiveIncome   int64 // laba (rugi) + jumlah OCI
+
+	// Kolom pembanding untuk total laba rugi dan penghasilan komprehensif.
 	PriorTotalRevenue          int64
 	PriorTotalOperatingExpense int64
 	PriorOperatingProfit       int64
@@ -94,6 +104,10 @@ type ReportView struct {
 	PriorProfitBeforeTax       int64
 	PriorTotalTaxExpense       int64
 	PriorNetIncome             int64
+	PriorTotalOCIRecyclable    int64
+	PriorTotalOCINonRecyclable int64
+	PriorTotalOCI              int64
+	PriorComprehensiveIncome   int64
 
 	CurrentAssets              []ReportLine
 	TotalCurrentAssets         int64

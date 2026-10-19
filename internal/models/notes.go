@@ -257,12 +257,11 @@ func (v *NotesView) Build(balance, priorBalance, movements, priorMovements []Acc
 	v.Groups = buildNoteGroups(balance, priorBalance, movements, priorMovements, numbers)
 	v.Distributions = equity.Distributions()
 
-	v.Compliance = "Laporan keuangan ini disusun menurut Standar Akuntansi Keuangan (SAK) " +
-		"Indonesia. Pernyataan kepatuhan penuh sebagaimana dimaksud PSAK 201 par. 16 " +
-		"belum dapat diberikan karena bagian penghasilan komprehensif lain (PSAK 201 " +
-		"par. 82A) belum disajikan dalam Laporan Laba Rugi dan akan menyusul. Selain " +
-		"bagian tersebut, laporan keuangan ini disusun dan disajikan menurut PSAK 201: " +
-		"Penyajian Laporan Keuangan dan PSAK 207: Laporan Arus Kas."
+	v.Compliance = "Laporan keuangan ini disusun dan disajikan menurut Standar " +
+		"Akuntansi Keuangan (SAK) Indonesia, sebagaimana dimaksud PSAK 201 par. 16, " +
+		"termasuk bagian penghasilan komprehensif lain (PSAK 201 par. 82A) yang " +
+		"disajikan pada Laporan Laba Rugi dan Penghasilan Komprehensif Lain, serta " +
+		"PSAK 207: Laporan Arus Kas."
 
 	v.BasisNotes = []string{
 		"Laporan keuangan disusun menurut dasar akrual (PSAK 201 par. 27-28): transaksi diakui pada saat terjadi dan dicatat dalam catatan akuntansi, bukan pada saat kas diterima atau dibayarkan.",

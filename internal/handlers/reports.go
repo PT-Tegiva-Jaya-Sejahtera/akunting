@@ -355,6 +355,7 @@ func (h *Handlers) periodMovementRows(ctx context.Context, companyID int64, from
 			AccountType:   r.AccountType,
 			SubType:       r.SubType,
 			PsakLine:      r.PsakLine,
+			OciKind:       r.OciKind,
 			NormalBalance: r.NormalBalance,
 			TotalDebit:    r.TotalDebit,
 			TotalCredit:   r.TotalCredit,
@@ -368,19 +369,42 @@ func (h *Handlers) periodMovementRows(ctx context.Context, companyID int64, from
 // PSAK 201 par. 82 huruf b dan d.
 type plBlock struct {
 	revenue, operating, finance, tax []models.ReportLine
+	ociRecyclable, ociNonRecyclable  []models.ReportLine
 	totalRevenue, totalOperating     int64
 	totalFinance, totalTax           int64
+	totalOCIRecyclable               int64
+	totalOCINonRecyclable            int64
 }
 
 // assemblePL mengelompokkan akun pendapatan dan beban satu rentang waktu.
 // Beban dikelompokkan menurut sifatnya (par. 99-105): setiap akun beban
 // mewakili satu sifat beban, kecuali akun yang dipetakan ke beban keuangan
 // atau beban pajak lewat accounts.psak_line.
+//
+// Akun ber-accounts.oci_kind (PSAK 201 par. 82A) dipisah dari laba rugi
+// biasa: mutasinya (kredit - debit) disajikan pada bagian penghasilan
+// komprehensif lain, dipilah menurut kelompok reklamasi. Penanda ini
+// diperiksa lebih dulu supaya akun OCI tidak terhitung dua kali.
 func assemblePL(rows []db.ListAccountTotalsByPeriodRow) plBlock {
 	var b plBlock
 	for _, row := range rows {
 		debit := models.NumericToCents(row.TotalDebit)
 		credit := models.NumericToCents(row.TotalCredit)
+		if row.OciKind.Valid {
+			amount := credit - debit
+			if amount == 0 {
+				continue
+			}
+			line := models.ReportLine{Code: row.Code, Name: row.Name, AmountCents: amount}
+			if row.OciKind.String == models.OciRecyclable {
+				b.ociRecyclable = append(b.ociRecyclable, line)
+				b.totalOCIRecyclable += amount
+			} else {
+				b.ociNonRecyclable = append(b.ociNonRecyclable, line)
+				b.totalOCINonRecyclable += amount
+			}
+			continue
+		}
 		switch row.AccountType {
 		case db.AccountTypeRevenue:
 			amount := credit - debit
@@ -449,6 +473,20 @@ func applyProfitLoss(view *models.ReportView, cur, pri plBlock, rate pgtype.Nume
 
 	view.NetIncome = view.ProfitBeforeTax - curTax
 	view.PriorNetIncome = view.PriorProfitBeforeTax - priTax
+
+	// Penghasilan komprehensif lain (PSAK 201 par. 82A): mutasi akun
+	// ber-oci_kind, dipilah dua kelompok reklamasi, lalu jumlah laba rugi
+	// komprehensif = laba (rugi) + jumlah penghasilan komprehensif lain.
+	view.OCIRecyclable = mergeLines(cur.ociRecyclable, pri.ociRecyclable)
+	view.OCINonRecyclable = mergeLines(cur.ociNonRecyclable, pri.ociNonRecyclable)
+	view.TotalOCIRecyclable = cur.totalOCIRecyclable
+	view.PriorTotalOCIRecyclable = pri.totalOCIRecyclable
+	view.TotalOCINonRecyclable = cur.totalOCINonRecyclable
+	view.PriorTotalOCINonRecyclable = pri.totalOCINonRecyclable
+	view.TotalOCI = cur.totalOCIRecyclable + cur.totalOCINonRecyclable
+	view.PriorTotalOCI = pri.totalOCIRecyclable + pri.totalOCINonRecyclable
+	view.ComprehensiveIncome = view.NetIncome + view.TotalOCI
+	view.PriorComprehensiveIncome = view.PriorNetIncome + view.PriorTotalOCI
 }
 
 // taxKoreksiLine membuat baris beban pajak kini pada Laporan Laba Rugi:

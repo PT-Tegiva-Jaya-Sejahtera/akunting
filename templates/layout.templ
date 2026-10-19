@@ -125,6 +125,8 @@ templ navIcon(name string) {
 			<path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
 		} else if name == "exchange" {
 			<path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/>
+		} else if name == "bank" {
+			<path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 10l9-6 9 6M5 10v9m4-9v9m6-9v9m4-9v9M3 19h18"/>
 		} else if name == "invitations" {
 			<path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z"/>
 		}
@@ -166,6 +168,10 @@ templ navLinks(shell Shell) {
 		<a href={ companyPath(shell.CompanyKey, "/inventory") } class={ navClass(shell.Active == "inventory") }>
 			@navIcon("inventory")
 			Persediaan
+		</a>
+		<a href={ companyPath(shell.CompanyKey, "/bank") } class={ navClass(shell.Active == "bank") }>
+			@navIcon("bank")
+			Kas & Bank
 		</a>
 		<a href={ companyPath(shell.CompanyKey, "/reports/pl") } class={ navClass(shell.Active == "pl") }>
 			@navIcon("pl")

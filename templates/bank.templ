@@ -1,0 +1,348 @@
+package templates
+
+import (
+	"strconv"
+
+	"accounting/internal/database/db"
+	"accounting/internal/models"
+)
+
+// bankCell merender satu sel angka rekonsiliasi (kosong bila nol), pola yang
+// sama dengan tabel persediaan dan subledger.
+templ bankCell(amount int64, label string) {
+	<td class="num px-5 py-2.5 text-right text-ink">
+		if amount != 0 {
+			{ label }
+		}
+	</td>
+}
+
+// bankCellLabel merender satu sel angka yang selalu tampil, termasuk nol.
+templ bankCellLabel(amount int64, label string) {
+	<td class="num px-5 py-2.5 text-right text-label">{ label }</td>
+}
+
+// bankBadge merender lencana status baris mutasi: hijau (cocok), ungu lembut
+// (cocok dengan selisih kurs), dan kuning (belum cocok).
+templ bankBadge(status string) {
+	if status == "matched" {
+		<span class="rounded-full bg-ok/10 px-2.5 py-0.5 text-xs font-medium text-ok">Cocok</span>
+	} else if status == "adjusted" {
+		<span class="rounded-full bg-accent-wash px-2.5 py-0.5 text-xs font-medium text-accent">Cocok + selisih</span>
+	} else {
+		<span class="rounded-full bg-warn/10 px-2.5 py-0.5 text-xs font-medium text-warn">Belum cocok</span>
+	}
+}
+
+// bankUnmatchedCount menjumlah baris mutasi yang belum cocok.
+func bankUnmatchedCount(lines []models.StatementRow) int {
+	n := 0
+	for _, l := range lines {
+		if l.Status == "unmatched" {
+			n++
+		}
+	}
+	return n
+}
+
+// BankPage adalah halaman Kas & Bank: daftar rekening bank dan form tambah
+// rekening yang menunjuk akun COA kas.
+templ BankPage(shell Shell, company db.Company, view models.BankView, errMsg string) {
+	@Layout(shell) {
+		@pageHeader("Kas & Bank", company.Name+" · rekonsiliasi mutasi bank terhadap jurnal") {
+			<span></span>
+		}
+		if errMsg != "" {
+			@errBox(errMsg)
+		}
+		if view.CanManage {
+			<div class={ cardClass + " mt-6 px-5 py-5" }>
+				<div class="text-sm font-semibold text-ink">Tambah Rekening Bank</div>
+				<form
+					method="post"
+					action={ companyPath(company.UrlKey, "/bank") }
+					class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+				>
+					<div>
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="bank-name">Nama Bank</label>
+						<input id="bank-name" name="bank_name" required placeholder="BCA" class={ inputClass }/>
+					</div>
+					<div>
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="bank-number">No. Rekening (opsional)</label>
+						<input id="bank-number" name="account_number" placeholder="1234567890" class={ inputClass + " num" }/>
+					</div>
+					<div>
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="bank-account">Akun COA</label>
+						<select id="bank-account" name="account_id" class={ inputClass } required>
+							for _, a := range view.COA {
+								<option value={ strconv.FormatInt(a.ID, 10) }>{ a.Code + " " + a.Name }</option>
+							}
+						</select>
+					</div>
+					<div>
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="bank-currency">Mata Uang (opsional)</label>
+						<input id="bank-currency" name="currency" placeholder="kosong = IDR dari pembukuan" class={ inputClass }/>
+					</div>
+					<div class="flex items-end">
+						<button type="submit" class={ btnPrimary }>Simpan Rekening</button>
+					</div>
+				</form>
+			</div>
+		}
+		<div class={ cardClass + " mt-6" }>
+			<div class={ cardTitleClass }>Rekening Bank</div>
+			if len(view.Accounts) == 0 {
+				@emptyState("M3 10h18M3 10l9-6 9 6M5 10v9m4-9v9m6-9v9m4-9v9M3 19h18", "Belum ada rekening bank", "Tambahkan rekening di atas, lalu unggah mutasi CSV-nya lewat halaman rekonsiliasi.") {
+				}
+			} else {
+				<div class="overflow-x-auto">
+					<table class="w-full min-w-[720px] text-sm">
+						<thead>
+							<tr class="border-b border-line bg-panel/60">
+								<th class={ thClass }>Bank</th>
+								<th class={ thClass }>No. Rekening</th>
+								<th class={ thClass }>Akun COA</th>
+								<th class={ thClass }>Mata Uang</th>
+								<th class={ thClass + " text-right" }>Belum Cocok</th>
+								<th class={ thClass + " text-right" }>Aksi</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-line">
+							for _, a := range view.Accounts {
+								<tr class="transition-colors hover:bg-panel/60">
+									<td class="px-5 py-2.5 text-ink">{ a.BankName }</td>
+									<td class="num px-5 py-2.5 text-label">{ a.AccountNumber }</td>
+									<td class="px-5 py-2.5 text-label">{ a.AccountCode + " " + a.AccountName }</td>
+									<td class="px-5 py-2.5 text-label">
+										if a.Currency != "" {
+											{ a.Currency }
+										} else {
+											IDR (dasar)
+										}
+									</td>
+									<td class="num px-5 py-2.5 text-right text-ink">{ strconv.FormatInt(a.UnmatchedCount, 10) }</td>
+									<td class="px-5 py-2.5 text-right">
+										<a href={ companyPath(company.UrlKey, "/bank/"+strconv.FormatInt(a.ID, 10)) } class={ btnSecondary }>Rekonsiliasi</a>
+									</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+		</div>
+		<div class={ cardClass + " mt-6" }>
+			<div class={ cardTitleClass }>
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<span>Format CSV mutasi</span>
+					<span class="text-xs font-normal text-muted">dibaca memakai modul exchange (CSV, TXT tab, XLS/XLSX, XML)</span>
+				</div>
+			</div>
+			<div class="border-t border-line px-5 py-3 text-xs text-muted">
+				Kolom yang dibaca (huruf besar/kecil abaikan): Tanggal, Keterangan, Masuk, Keluar, Saldo, Ref.
+				Saldo dan Ref opsional; saldo hanya untuk tampilan, tidak dipakai mencocokkan.
+				Tanggal dd/mm/yyyy atau yyyy-mm-dd; angka polos (4500000.00) atau format Indonesia (4.500.000,00).
+			</div>
+		</div>
+	}
+}
+
+// BankReconcilePage adalah halaman rekonsiliasi satu rekening bank: saldo buku
+// vs mutasi, daftar baris mutasi beserta status cocok, dan form pencocokan
+// untuk baris yang belum cocok. Pencocokan dengan jumlah berbeda membuat
+// jurnal selisih kurs otomatis (referensi REC-*).
+templ BankReconcilePage(shell Shell, company db.Company, view models.BankReconView) {
+	@Layout(shell) {
+		@pageHeader("Rekonsiliasi "+view.Bank.BankName, view.Bank.AccountNumber+" · akun COA "+view.Bank.AccountCode+" "+view.Bank.AccountName) {
+			<a href={ companyPath(company.UrlKey, "/bank") } class={ btnSecondary }>Kas & Bank</a>
+		}
+		<div class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+			@kpiCardSimple("Saldo menurut buku", view.Money(view.BookCents), view.Bank.AccountCode+" "+view.Bank.AccountName)
+			@kpiCardSimple("Jumlah mutasi diimpor", view.Money(view.BankCents), strconv.Itoa(len(view.Lines))+" baris")
+			@kpiCardSimple("Mutasi belum cocok", view.Money(view.UnmatchedTotal), strconv.Itoa(bankUnmatchedCount(view.Lines))+" baris")
+			@kpiCardSimple("Selisih buku vs mutasi", view.Money(view.BankCents-view.BookCents), "karena baris belum cocok")
+		</div>
+		if view.CanManage {
+			<div class={ cardClass + " mt-6 px-5 py-5" }>
+				<div class="text-sm font-semibold text-ink">Impor Mutasi CSV</div>
+				<form
+					method="post"
+					action={ companyPath(company.UrlKey, "/bank/"+strconv.FormatInt(view.Bank.ID, 10)+"/import") }
+					enctype="multipart/form-data"
+					class="mt-4 flex flex-wrap items-end gap-4"
+				>
+					<div>
+						<label class="mb-1.5 block text-sm font-medium text-ink" for="berkas">Berkas mutasi</label>
+						<input id="berkas" name="berkas" type="file" accept=".csv,.txt,.xls,.xlsx,.xml" required class="block rounded-input border border-line bg-white px-3 py-1.5 text-sm text-label file:mr-3 file:rounded-input file:border-0 file:bg-panel file:px-2 file:py-1 file:text-xs"/>
+					</div>
+					<button type="submit" class={ btnPrimary }>Periksa Berkas</button>
+				</form>
+				<div class="mt-3 text-xs text-muted">
+					<form
+						method="post"
+						action={ companyPath(company.UrlKey, "/bank/"+strconv.FormatInt(view.Bank.ID, 10)+"/automatch") }
+					>
+						<button type="submit" class={ btnSecondary }>Cocokkan Otomatis</button>
+					</form>
+				</div>
+			</div>
+		}
+		<div class={ cardClass + " mt-6" }>
+			<div class={ cardTitleClass }>
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<span>Mutasi Bank</span>
+					<span class="text-xs font-normal text-muted">baris cocok dengan selisih otomatis dibuat penyesuaian REC-<span class="num"></span></span>
+				</div>
+			</div>
+			if len(view.Lines) == 0 {
+				<p class="px-5 pb-5 text-sm text-muted">Belum ada mutasi yang diimpor.</p>
+			} else {
+				<div class="overflow-x-auto">
+					<table class="w-full min-w-[900px] text-sm">
+						<thead>
+							<tr class="border-b border-line bg-panel/60">
+								<th class={ thClass }>Tanggal</th>
+								<th class={ thClass }>Keterangan</th>
+								<th class={ thClass + " text-right" }>Masuk</th>
+								<th class={ thClass + " text-right" }>Keluar</th>
+								<th class={ thClass }>Status</th>
+								<th class={ thClass }>Aksi</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-line">
+							for _, line := range view.Lines {
+								<tr class="transition-colors hover:bg-panel/60">
+									<td class="num px-5 py-2.5 text-label">{ line.DateLabel }</td>
+									<td class="px-5 py-2.5 text-ink">
+										{ line.Description }
+										if line.Reference != "" {
+											<span class="text-muted"> · { line.Reference }</span>
+										}
+									</td>
+									@bankCell(line.InCents, view.Money(line.InCents))
+									@bankCell(line.OutCents, view.Money(line.OutCents))
+									<td class="px-5 py-2.5">@bankBadge(line.Status)</td>
+									<td class="px-5 py-2.5">@bankActionCell(company.UrlKey, view.CanManage, line, view.RoundingUnit)</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+		</div>
+	}
+}
+
+// bankActionCell merender kolom aksi: form pencocokan dengan daftar kandidat
+// untuk baris belum cocok, atau tautan jurnal selisih dan tombol lepas untuk
+// yang sudah dicocokkan.
+templ bankActionCell(urlKey string, canManage bool, line models.StatementRow, roundingUnit string) {
+	if line.Status == "unmatched" {
+		if len(line.Candidates) > 0 && canManage {
+			<form
+				method="post"
+				action={ companyPath(urlKey, "/bank/statements/"+strconv.FormatInt(line.ID, 10)+"/match") }
+				class="flex flex-wrap items-center gap-2"
+			>
+				<select name="entry_id" class="w-56 rounded-input border border-line bg-white px-2 py-1.5 text-xs text-ink">
+					for _, c := range line.Candidates {
+						if c.DiffCents != 0 {
+							<option value={ strconv.FormatInt(c.EntryID, 10) }>{ c.DateLabel + " " + c.Reference + " · " + models.FormatRounded(c.AmountCents, roundingUnit) + " (selisih " + models.FormatRounded(absInt(c.DiffCents), roundingUnit) + ")" }</option>
+						} else {
+							<option value={ strconv.FormatInt(c.EntryID, 10) }>{ c.DateLabel + " " + c.Reference + " · " + models.FormatRounded(c.AmountCents, roundingUnit) }</option>
+						}
+					}
+				</select>
+				<button type="submit" class={ btnSecondary }>Cocokkan</button>
+			</form>
+		} else {
+			<span class="text-xs text-muted">-</span>
+		}
+	} else {
+		<div class="text-xs text-muted">
+			if line.MatchedJournalID != 0 {
+				<a href={ companyPath(urlKey, "/journals/"+strconv.FormatInt(line.MatchedJournalID, 10)) } class="text-accent hover:underline">{ line.MatchedJournalRef }</a>
+				<br/>
+			}
+			if canManage {
+				<form method="post" action={ companyPath(urlKey, "/bank/statements/"+strconv.FormatInt(line.ID, 10)+"/unmatch") } class="mt-1">
+					<button type="submit" class="text-xs text-muted hover:text-danger">lepas</button>
+				</form>
+			}
+		</div>
+	}
+}
+
+// BankImportPreviewPage menampilkan hasil pembacaan berkas mutasi bank sebelum
+// disimpan (pola dua langkah seperti import pada modul exchange).
+templ BankImportPreviewPage(shell Shell, company db.Company, view models.BankImportPreviewView) {
+	@Layout(shell) {
+		@pageHeader("Periksa Impor Mutasi", view.BankLabel) {
+			<a href={ companyPath(company.UrlKey, "/bank/"+strconv.FormatInt(view.BankID, 10)) } class={ btnSecondary }>Kembali</a>
+		}
+		<div class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+			@kpiCardSimple("Berkas", view.FileName, "")
+			@kpiCardSimple("Baris valid", strconv.Itoa(view.Valid), "dari "+strconv.Itoa(view.TotalRows)+" baris")
+			@kpiCardSimple("Masalah", strconv.Itoa(len(view.Errors)), "")
+		</div>
+		if len(view.Errors) > 0 {
+			<div class="mt-6 rounded-card border border-danger/30 bg-danger/5 px-5 py-4">
+				<div class="text-sm font-semibold text-danger">Perlu diperbaiki ({ strconv.Itoa(len(view.Errors)) } masalah)</div>
+				<ul class="mt-2 space-y-1 text-sm text-danger">
+					for i, e := range view.Errors {
+						if i < 50 {
+							<li>{ e }</li>
+						}
+					}
+				</ul>
+			</div>
+		}
+		if len(view.Rows) > 0 {
+			<div class={ cardClass + " mt-6" }>
+				<div class={ cardTitleClass }>Pratinjau Mutasi</div>
+				<div class="overflow-x-auto">
+					<table class="w-full min-w-[720px] text-sm">
+						<thead>
+							<tr class="border-b border-line bg-panel/60">
+								<th class={ thClass }>Tanggal</th>
+								<th class={ thClass }>Keterangan</th>
+								<th class={ thClass + " text-right" }>Masuk</th>
+								<th class={ thClass + " text-right" }>Keluar</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-line">
+							for _, row := range view.Rows {
+								<tr class="transition-colors hover:bg-panel/60">
+									<td class="num px-5 py-2.5 text-label">{ row.DateLabel }</td>
+									<td class="px-5 py-2.5 text-ink">{ row.Description }</td>
+									@bankCell(row.InCents, models.FormatRounded(row.InCents, view.RoundingUnit))
+									@bankCell(row.OutCents, models.FormatRounded(row.OutCents, view.RoundingUnit))
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			</div>
+		}
+		if view.Valid > 0 && len(view.Errors) == 0 {
+			<div class={ cardClass + " mt-6" }>
+				<div class={ cardTitleClass }>Terapkan</div>
+				<div class="flex flex-wrap items-center justify-between gap-3 px-5 py-5">
+					<p class="max-w-xl text-sm text-muted">{ strconv.Itoa(view.Valid) } baris mutasi siap disimpan. Data hanya menambah mutasi; tidak ada data lama yang diubah.</p>
+					<form method="post" action={ companyPath(company.UrlKey, "/bank/"+strconv.FormatInt(view.BankID, 10)+"/import/confirm") }>
+						<input type="hidden" name="token" value={ view.Token }/>
+						<button type="submit" class={ btnPrimary }>Simpan { strconv.Itoa(view.Valid) } baris</button>
+					</form>
+				</div>
+			</div>
+		}
+	}
+}
+
+// absInt mengembalikan nilai mutlak (dipakai label selisih).
+func absInt(v int64) int64 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}

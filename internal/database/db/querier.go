@@ -14,6 +14,7 @@ type Querier interface {
 	CancelInvitation(ctx context.Context, arg CancelInvitationParams) (int64, error)
 	CloseFiscalPeriod(ctx context.Context, arg CloseFiscalPeriodParams) (int64, error)
 	CountCompanyOwners(ctx context.Context, companyID int64) (int64, error)
+	CountDuplicateStatementLines(ctx context.Context, arg CountDuplicateStatementLinesParams) ([]CountDuplicateStatementLinesRow, error)
 	CountJournals(ctx context.Context, companyID int64) (int64, error)
 	// ============================================================
 	// Chart of Accounts
@@ -22,6 +23,10 @@ type Querier interface {
 	// models.SubledgerFlags dari psak_line/sub_type, pola yang sama dengan
 	// models.GuessPsakLine untuk psak_line, supaya akun baru langsung bertanda.
 	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
+	// ============================================================
+	// Rekonsiliasi kas/bank (Stage B): bank_accounts + mutasi CSV
+	// ============================================================
+	CreateBankAccount(ctx context.Context, arg CreateBankAccountParams) (BankAccount, error)
 	CreateCompany(ctx context.Context, arg CreateCompanyParams) (Company, error)
 	CreateFiscalPeriod(ctx context.Context, arg CreateFiscalPeriodParams) (FiscalPeriod, error)
 	// ============================================================
@@ -79,6 +84,7 @@ type Querier interface {
 	// ============================================================
 	ExportJournalLines(ctx context.Context, arg ExportJournalLinesParams) ([]ExportJournalLinesRow, error)
 	GetAccountBySystemRole(ctx context.Context, arg GetAccountBySystemRoleParams) (Account, error)
+	GetBankAccountByID(ctx context.Context, arg GetBankAccountByIDParams) (GetBankAccountByIDRow, error)
 	GetCompanyByID(ctx context.Context, id int64) (Company, error)
 	GetCompanyByKey(ctx context.Context, urlKey string) (Company, error)
 	GetCompanyBySlug(ctx context.Context, slug string) (Company, error)
@@ -89,6 +95,7 @@ type Querier interface {
 	GetJournalWithEntries(ctx context.Context, arg GetJournalWithEntriesParams) ([]GetJournalWithEntriesRow, error)
 	GetSessionWithUser(ctx context.Context, tokenHash string) (GetSessionWithUserRow, error)
 	GetSignupDraft(ctx context.Context, tokenHash string) (SignupDraft, error)
+	GetStatementLineByID(ctx context.Context, arg GetStatementLineByIDParams) (BankStatementLine, error)
 	GetSystemJournals(ctx context.Context, arg GetSystemJournalsParams) ([]Journal, error)
 	GetUserByUsername(ctx context.Context, username string) (User, error)
 	// ============================================================
@@ -98,6 +105,7 @@ type Querier interface {
 	GetUserRoleInCompany(ctx context.Context, arg GetUserRoleInCompanyParams) (string, error)
 	GrantCompanyAccess(ctx context.Context, arg GrantCompanyAccessParams) error
 	IncrementInvitationPinAttempts(ctx context.Context, id int64) (int64, error)
+	InsertStatementLine(ctx context.Context, arg InsertStatementLineParams) (int64, error)
 	ListAccountMovements(ctx context.Context, arg ListAccountMovementsParams) ([]ListAccountMovementsRow, error)
 	// Neraca lajur kasar: total debit & credit per akun pada periode.
 	ListAccountTotals(ctx context.Context, arg ListAccountTotalsParams) ([]ListAccountTotalsRow, error)
@@ -126,6 +134,7 @@ type Querier interface {
 	ListAccounts(ctx context.Context, companyID int64) ([]Account, error)
 	ListAccountsAll(ctx context.Context, companyID int64) ([]Account, error)
 	ListAdjustingJournals(ctx context.Context, arg ListAdjustingJournalsParams) ([]Journal, error)
+	ListBankAccounts(ctx context.Context, companyID int64) ([]ListBankAccountsRow, error)
 	// ============================================================
 	// RBAC: daftar perusahaan yang berhak diakses user
 	// ============================================================
@@ -175,7 +184,14 @@ type Querier interface {
 	// saldo akun piutang pada buku besar.
 	ListReceivableMovements(ctx context.Context, arg ListReceivableMovementsParams) ([]ListReceivableMovementsRow, error)
 	ListRecentJournals(ctx context.Context, arg ListRecentJournalsParams) ([]Journal, error)
+	// Kandidat pencocokan: baris ledger pada akun COA rekening bank yang belum
+	// dicocokkan ke baris mutasi mana pun. Jurnal closing dan jurnal hasil
+	// rekonsiliasi (referensi REC-*) tidak diikutkan supaya baris selisih yang
+	// baru dibuat tidak dipakai lagi.
+	ListReconcileCandidates(ctx context.Context, arg ListReconcileCandidatesParams) ([]ListReconcileCandidatesRow, error)
+	ListStatementLines(ctx context.Context, arg ListStatementLinesParams) ([]BankStatementLine, error)
 	MarkInvitationUsed(ctx context.Context, arg MarkInvitationUsedParams) (int64, error)
+	MatchStatementLine(ctx context.Context, arg MatchStatementLineParams) error
 	// ============================================================
 	// Dashboard: seri bulanan pendapatan, beban, dan laba
 	// ============================================================
@@ -188,6 +204,7 @@ type Querier interface {
 	// Manajemen user dan peran per perusahaan (owner/admin/staff)
 	// ============================================================
 	TouchUserActivity(ctx context.Context, id int64) (int64, error)
+	UnmatchStatementLine(ctx context.Context, arg UnmatchStatementLineParams) error
 	UpdateAccount(ctx context.Context, arg UpdateAccountParams) error
 	UpdateCompanyProfile(ctx context.Context, arg UpdateCompanyProfileParams) error
 	UpdateCompanyUserRole(ctx context.Context, arg UpdateCompanyUserRoleParams) error

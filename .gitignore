@@ -2,6 +2,7 @@
 /var/
 .commandcode/
 *.log
+.worktrees/
 .env
 
 # Semua .sql proyek (migrasi + queries.sql) wajib terlacak. Baris negasi ini

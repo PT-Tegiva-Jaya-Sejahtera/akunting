@@ -480,6 +480,49 @@ func (ns NullPillar) Value() (driver.Value, error) {
 	return string(ns.Pillar), nil
 }
 
+type StatementLineStatus string
+
+const (
+	StatementLineStatusUnmatched StatementLineStatus = "unmatched"
+	StatementLineStatusMatched   StatementLineStatus = "matched"
+	StatementLineStatusAdjusted  StatementLineStatus = "adjusted"
+)
+
+func (e *StatementLineStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = StatementLineStatus(s)
+	case string:
+		*e = StatementLineStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for StatementLineStatus: %T", src)
+	}
+	return nil
+}
+
+type NullStatementLineStatus struct {
+	StatementLineStatus StatementLineStatus
+	Valid               bool // Valid is true if StatementLineStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullStatementLineStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.StatementLineStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.StatementLineStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullStatementLineStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.StatementLineStatus), nil
+}
+
 type Account struct {
 	ID            int64
 	CompanyID     int64
@@ -494,6 +537,37 @@ type Account struct {
 	PsakLine      string
 	IsReceivable  bool
 	IsPayable     bool
+	OciKind       pgtype.Text
+}
+
+type BankAccount struct {
+	ID            int64
+	CompanyID     int64
+	AccountID     int64
+	BankName      string
+	AccountNumber string
+	Currency      string
+	IsActive      bool
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+}
+
+type BankStatementLine struct {
+	ID               int64
+	CompanyID        int64
+	BankAccountID    int64
+	LineDate         pgtype.Date
+	Description      string
+	Reference        string
+	AmountIn         pgtype.Numeric
+	AmountOut        pgtype.Numeric
+	Balance          pgtype.Numeric
+	Status           StatementLineStatus
+	MatchedEntryID   pgtype.Int8
+	MatchedJournalID pgtype.Int8
+	MatchedAt        pgtype.Timestamptz
+	SourceFile       string
+	CreatedAt        pgtype.Timestamptz
 }
 
 type Company struct {

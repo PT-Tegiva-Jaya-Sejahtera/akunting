@@ -304,6 +304,7 @@ SELECT
     a.account_type,
     a.sub_type,
     a.psak_line,
+    a.oci_kind,
     a.normal_balance,
     COALESCE(t.total_debit, 0)::NUMERIC(20, 2)  AS total_debit,
     COALESCE(t.total_credit, 0)::NUMERIC(20, 2) AS total_credit
@@ -676,6 +677,7 @@ SELECT
     a.account_type,
     a.sub_type,
     a.psak_line,
+    a.oci_kind,
     a.normal_balance,
     COALESCE(t.total_debit, 0)::NUMERIC(20, 2)  AS total_debit,
     COALESCE(t.total_credit, 0)::NUMERIC(20, 2) AS total_credit
@@ -905,3 +907,106 @@ JOIN inventory_items i ON i.id = m.item_id AND i.company_id = m.company_id
 WHERE m.company_id = @company_id
   AND m.date <= @as_of
 ORDER BY m.date, m.id;
+
+-- ============================================================
+-- Rekonsiliasi kas/bank (Stage B): bank_accounts + mutasi CSV
+-- ============================================================
+
+-- name: CreateBankAccount :one
+INSERT INTO bank_accounts (company_id, account_id, bank_name, account_number, currency)
+VALUES (@company_id, @account_id, @bank_name, @account_number, @currency)
+RETURNING *;
+
+-- name: ListBankAccounts :many
+SELECT
+    ba.*,
+    a.code AS account_code,
+    a.name AS account_name,
+    (SELECT COUNT(*) FROM bank_statement_lines s
+     WHERE s.company_id = ba.company_id AND s.bank_account_id = ba.id
+       AND s.status = 'unmatched') AS unmatched_count
+FROM bank_accounts ba
+JOIN accounts a ON a.id = ba.account_id AND a.company_id = ba.company_id
+WHERE ba.company_id = @company_id AND ba.is_active = TRUE
+ORDER BY ba.id;
+
+-- name: GetBankAccountByID :one
+SELECT
+    ba.*,
+    a.code AS account_code,
+    a.name AS account_name
+FROM bank_accounts ba
+JOIN accounts a ON a.id = ba.account_id AND a.company_id = ba.company_id
+WHERE ba.id = @id AND ba.company_id = @company_id;
+
+-- name: ListStatementLines :many
+SELECT *
+FROM bank_statement_lines
+WHERE company_id = @company_id AND bank_account_id = @bank_account_id
+ORDER BY line_date, id;
+
+-- name: GetStatementLineByID :one
+SELECT *
+FROM bank_statement_lines
+WHERE id = @id AND company_id = @company_id;
+
+-- Kandidat pencocokan: baris ledger pada akun COA rekening bank yang belum
+-- dicocokkan ke baris mutasi mana pun. Jurnal closing dan jurnal hasil
+-- rekonsiliasi (referensi REC-*) tidak diikutkan supaya baris selisih yang
+-- baru dibuat tidak dipakai lagi.
+-- name: ListReconcileCandidates :many
+SELECT
+    le.id,
+    le.journal_id,
+    le.company_id,
+    le.account_id,
+    j.journal_date,
+    j.reference,
+    j.memo,
+    le.description,
+    le.debit,
+    le.credit
+FROM ledger_entries le
+JOIN journals j ON j.id = le.journal_id AND j.company_id = le.company_id
+WHERE le.company_id = @company_id
+  AND le.account_id = @account_id
+  AND j.status = 'posted'
+  AND j.kind <> 'closing'
+  AND j.reference NOT LIKE @ref_prefix
+  AND NOT EXISTS (
+      SELECT 1 FROM bank_statement_lines s
+      WHERE s.company_id = le.company_id AND s.matched_entry_id = le.id
+  )
+ORDER BY j.journal_date, le.id;
+
+-- name: MatchStatementLine :exec
+UPDATE bank_statement_lines
+SET status = CASE WHEN @adjusted::BOOLEAN THEN 'adjusted'::statement_line_status
+                  ELSE 'matched'::statement_line_status END,
+    matched_entry_id = @matched_entry_id,
+    matched_journal_id = NULLIF(@matched_journal_id::BIGINT, 0),
+    matched_at = now()
+WHERE id = @id AND company_id = @company_id AND status = 'unmatched';
+
+-- name: UnmatchStatementLine :exec
+UPDATE bank_statement_lines
+SET status = 'unmatched', matched_entry_id = NULL,
+    matched_journal_id = NULL, matched_at = NULL
+WHERE id = @id AND company_id = @company_id AND status <> 'unmatched';
+
+-- name: InsertStatementLine :execrows
+INSERT INTO bank_statement_lines (
+    company_id, bank_account_id, line_date, description, reference,
+    amount_in, amount_out, balance, source_file
+) VALUES (
+    @company_id, @bank_account_id, @line_date, @description, @reference,
+    @amount_in, @amount_out, @balance, @source_file
+);
+
+-- name: CountDuplicateStatementLines :many
+SELECT line_date, description, reference, amount_in, amount_out, COUNT(*) AS n
+FROM bank_statement_lines
+WHERE company_id = @company_id AND bank_account_id = @bank_account_id
+GROUP BY line_date, description, reference, amount_in, amount_out
+HAVING COUNT(*) > 1
+ORDER BY line_date;

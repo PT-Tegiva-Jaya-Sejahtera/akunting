@@ -32,6 +32,12 @@ const (
 	SubCurrentLiability = "liabilitas_jangka_pendek"
 	SubLongLiability    = "liabilitas_jangka_panjang"
 	SubEquity           = "ekuitas"
+
+	// Penanda akun penghasilan komprehensif lain (accounts.oci_kind),
+	// PSAK 201 par. 82A: komponen yang akan vs tidak akan direklasifikasi
+	// ke laba rugi.
+	OciRecyclable    = "recyclable"
+	OciNonRecyclable = "non_recyclable"
 	SubRevenue          = "pendapatan"
 	SubExpense          = "beban"
 )

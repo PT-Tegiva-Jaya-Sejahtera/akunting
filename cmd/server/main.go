@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -92,7 +93,7 @@ func main() {
 	slog.Info("PostgreSQL terhubung")
 
 	queries := db.New(pool)
-	handler := handlers.New(queries, cfg.CookieSecure, cfg.PublicBaseURL)
+	handler := handlers.NewWithPool(queries, pool, cfg.CookieSecure, cfg.PublicBaseURL)
 
 	// Bersihkan berkas unggahan import yang sudah kedaluwarsa saat mulai.
 	handlers.PruneUploads()
@@ -146,12 +147,19 @@ func newRouter(pool *pgxpool.Pool, queries *db.Queries, h *handlers.Handlers) ht
 	// Aset statis (Tailwind hasil compile + HTMX) dari dalam binary.
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServerFS(static.Files)))
 
-	// Liveness + kesehatan koneksi DB.
+	// Liveness + kesehatan koneksi DB + pemeriksaan skema. Kalau migrasi
+	// belum lengkap, aplikasi bisa berjalan tapi laporan rusak diam-diam;
+	// health check menolak 200 sampai kolom kritis terpasang.
 	r.Get("/healthz", func(w http.ResponseWriter, req *http.Request) {
 		ctx, cancel := context.WithTimeout(req.Context(), 2*time.Second)
 		defer cancel()
 		if err := pool.Ping(ctx); err != nil {
 			http.Error(w, "db unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		if err := checkSchema(ctx, pool); err != nil {
+			slog.Error("healthz: pemeriksaan skema gagal", "error", err)
+			http.Error(w, "schema check failed: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -237,6 +245,14 @@ func newRouter(pool *pgxpool.Pool, queries *db.Queries, h *handlers.Handlers) ht
 				// Import akun (exchange) = operasi admin, sama seperti CRUD akun.
 				r.Post("/exchange/import", h.ExchangeImportPost)
 				r.Post("/exchange/import/confirm", h.ExchangeImportConfirm)
+				r.Get("/bank", h.BankGet)
+				r.Post("/bank", h.BankCreatePost)
+				r.Post("/bank/statements/{statementID}/match", h.StatementMatchPost)
+				r.Post("/bank/statements/{statementID}/unmatch", h.StatementUnmatchPost)
+				r.Get("/bank/{bankAccountID}", h.BankReconcileGet)
+				r.Post("/bank/{bankAccountID}/import", h.BankImportPost)
+				r.Post("/bank/{bankAccountID}/import/confirm", h.BankImportConfirm)
+				r.Post("/bank/{bankAccountID}/automatch", h.StatementAutomatchPost)
 
 				// PSAK 201: periode akuntansi, saldo awal, dan tutup buku.
 				r.Get("/periods", h.PeriodsGet)
@@ -262,4 +278,47 @@ func newRouter(pool *pgxpool.Pool, queries *db.Queries, h *handlers.Handlers) ht
 	})
 
 	return r
+}
+
+// checkSchema memastikan kolom kritis hasil migrasi memang ada di skema
+// database yang dipakai. Kolom ini dipakai langsung oleh laporan: kalau
+// migrasi 0014-0019 belum diterapkan penuh, query laporan bisa gagal atau
+// menampilkan angka lama diam-diam. Health check melaporkan 500 dengan
+// daftar kolom yang hilang, bukan 200 palsu.
+func checkSchema(ctx context.Context, pool *pgxpool.Pool) error {
+	const q = `
+    SELECT table_name || '.' || column_name
+    FROM information_schema.columns
+    WHERE table_schema = current_schema()
+      AND ((table_name = 'accounts' AND column_name IN ('oci_kind', 'is_receivable', 'is_payable'))
+        OR (table_name = 'companies' AND column_name = 'tax_rate'))`
+	rows, err := pool.Query(ctx, q)
+	if err != nil {
+		return fmt.Errorf("query information_schema: %w", err)
+	}
+	defer rows.Close()
+
+	found := map[string]bool{}
+	for rows.Next() {
+		var col string
+		if err := rows.Scan(&col); err != nil {
+			return fmt.Errorf("baca hasil information_schema: %w", err)
+		}
+		found[col] = true
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("rows information_schema: %w", err)
+	}
+
+	want := []string{"accounts.is_receivable", "accounts.is_payable", "accounts.oci_kind", "companies.tax_rate"}
+	var missing []string
+	for _, col := range want {
+		if !found[col] {
+			missing = append(missing, col)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("kolom skema hilang, migrasi belum lengkap: %s", strings.Join(missing, ", "))
+	}
+	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"accounting/internal/database/db"
 )
@@ -17,6 +18,9 @@ func timestamptz(t time.Time) pgtype.Timestamptz {
 // Handlers membawa dependensi bersama untuk semua handler.
 type Handlers struct {
 	DB *db.Queries
+	// Pool dipegang untuk transaksi eksplisit yang menyentuh lebih dari satu
+	// tabel dalam satu langkah atomik (mis. rekonsiliasi bank).
+	Pool *pgxpool.Pool
 	// CookieSecure = true saat aplikasi disajikan lewat HTTPS (Tailscale serve).
 	CookieSecure bool
 	// PublicBaseURL = alamat publik aplikasi (env PUBLIC_BASE_URL), dipakai
@@ -27,4 +31,10 @@ type Handlers struct {
 // New membuat Handlers dengan dependensi yang diberikan.
 func New(q *db.Queries, cookieSecure bool, publicBaseURL string) *Handlers {
 	return &Handlers{DB: q, CookieSecure: cookieSecure, PublicBaseURL: publicBaseURL}
+}
+
+// NewWithPool membuat Handlers dengan pool untuk transaksi eksplisit
+// (rekonsiliasi bank menulis jurnal selisih dan statusnya secara atomik).
+func NewWithPool(q *db.Queries, pool *pgxpool.Pool, cookieSecure bool, publicBaseURL string) *Handlers {
+	return &Handlers{DB: q, Pool: pool, CookieSecure: cookieSecure, PublicBaseURL: publicBaseURL}
 }

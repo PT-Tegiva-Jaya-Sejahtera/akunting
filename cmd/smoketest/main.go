@@ -241,6 +241,11 @@ func main() {
 	// rata-rata tertimbang, dan nilai persediaan.
 	evidenceInventory(ctx, pool, q, userID)
 
+	// 14. Bukti OCI (PSAK 201 par. 82A, Stage 4d): blok dua kelompok di
+	// Laba Rugi dan Jumlah Laba Rugi Komprehensif.
+	evidenceOCI(ctx, pool, q, userID)
+	evidenceBank(ctx, pool, q, userID)
+
 	fmt.Println("SEMUA SMOKE TEST LULUS")
 }
 

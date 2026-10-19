@@ -180,7 +180,15 @@ func drawPDFProfitLoss(pdf *fpdf.Fpdf, view models.ReportView) {
 
 	drawPDFGrand(pdf, view, "Laba (Rugi) Periode Berjalan", view.NetIncome, view.PriorNetIncome)
 
-	drawPDFNote(pdf, "Beban disajikan menurut sifat (PSAK 201 par. 99-105). Biaya keuangan (par. 82 huruf b) dan beban pajak (par. 82 huruf d) disajikan sebagai pos tersendiri. Bagian penghasilan komprehensif lain (par. 82A) belum disajikan.")
+	drawPDFSection(pdf, "Penghasilan Komprehensif Lain (PSAK 201 par. 82A)")
+	drawPDFLines(pdf, view, view.OCIRecyclable)
+	drawPDFSubtotal(pdf, view, "Jumlah Komponen Akan Direklasifikasi ke Laba Rugi", view.TotalOCIRecyclable, view.PriorTotalOCIRecyclable)
+	drawPDFLines(pdf, view, view.OCINonRecyclable)
+	drawPDFSubtotal(pdf, view, "Jumlah Komponen Tidak Direklasifikasi ke Laba Rugi", view.TotalOCINonRecyclable, view.PriorTotalOCINonRecyclable)
+	drawPDFSubtotal(pdf, view, "Jumlah Penghasilan Komprehensif Lain", view.TotalOCI, view.PriorTotalOCI)
+	drawPDFGrand(pdf, view, "Jumlah Laba Rugi Komprehensif", view.ComprehensiveIncome, view.PriorComprehensiveIncome)
+
+	drawPDFNote(pdf, "Beban disajikan menurut sifat (PSAK 201 par. 99-105). Biaya keuangan (par. 82 huruf b) dan beban pajak (par. 82 huruf d) disajikan sebagai pos tersendiri. Penghasilan komprehensif lain (par. 82A) disajikan setelah laba (rugi) periode berjalan, terbagi atas komponen yang akan dan tidak akan direklasifikasi ke laba rugi.")
 }
 
 // drawPDFBalanceSheet menyusun baris Neraca mengikuti klasifikasi PSAK 201

@@ -63,6 +63,56 @@ func (q *Queries) CountCompanyOwners(ctx context.Context, companyID int64) (int6
 	return owner_count, err
 }
 
+const countDuplicateStatementLines = `-- name: CountDuplicateStatementLines :many
+SELECT line_date, description, reference, amount_in, amount_out, COUNT(*) AS n
+FROM bank_statement_lines
+WHERE company_id = $1 AND bank_account_id = $2
+GROUP BY line_date, description, reference, amount_in, amount_out
+HAVING COUNT(*) > 1
+ORDER BY line_date
+`
+
+type CountDuplicateStatementLinesParams struct {
+	CompanyID     int64
+	BankAccountID int64
+}
+
+type CountDuplicateStatementLinesRow struct {
+	LineDate    pgtype.Date
+	Description string
+	Reference   string
+	AmountIn    pgtype.Numeric
+	AmountOut   pgtype.Numeric
+	N           int64
+}
+
+func (q *Queries) CountDuplicateStatementLines(ctx context.Context, arg CountDuplicateStatementLinesParams) ([]CountDuplicateStatementLinesRow, error) {
+	rows, err := q.db.Query(ctx, countDuplicateStatementLines, arg.CompanyID, arg.BankAccountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountDuplicateStatementLinesRow{}
+	for rows.Next() {
+		var i CountDuplicateStatementLinesRow
+		if err := rows.Scan(
+			&i.LineDate,
+			&i.Description,
+			&i.Reference,
+			&i.AmountIn,
+			&i.AmountOut,
+			&i.N,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countJournals = `-- name: CountJournals :one
 SELECT COUNT(*)::BIGINT AS jumlah
 FROM journals
@@ -80,7 +130,7 @@ const createAccount = `-- name: CreateAccount :one
 
 INSERT INTO accounts (company_id, code, name, account_type, sub_type, normal_balance, system_role, psak_line, is_receivable, is_payable)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line, is_receivable, is_payable
+RETURNING id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line, is_receivable, is_payable, oci_kind
 `
 
 type CreateAccountParams struct {
@@ -130,6 +180,48 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.PsakLine,
 		&i.IsReceivable,
 		&i.IsPayable,
+		&i.OciKind,
+	)
+	return i, err
+}
+
+const createBankAccount = `-- name: CreateBankAccount :one
+
+INSERT INTO bank_accounts (company_id, account_id, bank_name, account_number, currency)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, company_id, account_id, bank_name, account_number, currency, is_active, created_at, updated_at
+`
+
+type CreateBankAccountParams struct {
+	CompanyID     int64
+	AccountID     int64
+	BankName      string
+	AccountNumber string
+	Currency      string
+}
+
+// ============================================================
+// Rekonsiliasi kas/bank (Stage B): bank_accounts + mutasi CSV
+// ============================================================
+func (q *Queries) CreateBankAccount(ctx context.Context, arg CreateBankAccountParams) (BankAccount, error) {
+	row := q.db.QueryRow(ctx, createBankAccount,
+		arg.CompanyID,
+		arg.AccountID,
+		arg.BankName,
+		arg.AccountNumber,
+		arg.Currency,
+	)
+	var i BankAccount
+	err := row.Scan(
+		&i.ID,
+		&i.CompanyID,
+		&i.AccountID,
+		&i.BankName,
+		&i.AccountNumber,
+		&i.Currency,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -914,7 +1006,7 @@ func (q *Queries) ExportJournalLines(ctx context.Context, arg ExportJournalLines
 }
 
 const getAccountBySystemRole = `-- name: GetAccountBySystemRole :one
-SELECT id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line, is_receivable, is_payable
+SELECT id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line, is_receivable, is_payable, oci_kind
 FROM accounts
 WHERE company_id = $1 AND system_role = $2
 `
@@ -941,6 +1033,55 @@ func (q *Queries) GetAccountBySystemRole(ctx context.Context, arg GetAccountBySy
 		&i.PsakLine,
 		&i.IsReceivable,
 		&i.IsPayable,
+		&i.OciKind,
+	)
+	return i, err
+}
+
+const getBankAccountByID = `-- name: GetBankAccountByID :one
+SELECT
+    ba.id, ba.company_id, ba.account_id, ba.bank_name, ba.account_number, ba.currency, ba.is_active, ba.created_at, ba.updated_at,
+    a.code AS account_code,
+    a.name AS account_name
+FROM bank_accounts ba
+JOIN accounts a ON a.id = ba.account_id AND a.company_id = ba.company_id
+WHERE ba.id = $1 AND ba.company_id = $2
+`
+
+type GetBankAccountByIDParams struct {
+	ID        int64
+	CompanyID int64
+}
+
+type GetBankAccountByIDRow struct {
+	ID            int64
+	CompanyID     int64
+	AccountID     int64
+	BankName      string
+	AccountNumber string
+	Currency      string
+	IsActive      bool
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	AccountCode   string
+	AccountName   string
+}
+
+func (q *Queries) GetBankAccountByID(ctx context.Context, arg GetBankAccountByIDParams) (GetBankAccountByIDRow, error) {
+	row := q.db.QueryRow(ctx, getBankAccountByID, arg.ID, arg.CompanyID)
+	var i GetBankAccountByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.CompanyID,
+		&i.AccountID,
+		&i.BankName,
+		&i.AccountNumber,
+		&i.Currency,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AccountCode,
+		&i.AccountName,
 	)
 	return i, err
 }
@@ -1278,6 +1419,40 @@ func (q *Queries) GetSignupDraft(ctx context.Context, tokenHash string) (SignupD
 	return i, err
 }
 
+const getStatementLineByID = `-- name: GetStatementLineByID :one
+SELECT id, company_id, bank_account_id, line_date, description, reference, amount_in, amount_out, balance, status, matched_entry_id, matched_journal_id, matched_at, source_file, created_at
+FROM bank_statement_lines
+WHERE id = $1 AND company_id = $2
+`
+
+type GetStatementLineByIDParams struct {
+	ID        int64
+	CompanyID int64
+}
+
+func (q *Queries) GetStatementLineByID(ctx context.Context, arg GetStatementLineByIDParams) (BankStatementLine, error) {
+	row := q.db.QueryRow(ctx, getStatementLineByID, arg.ID, arg.CompanyID)
+	var i BankStatementLine
+	err := row.Scan(
+		&i.ID,
+		&i.CompanyID,
+		&i.BankAccountID,
+		&i.LineDate,
+		&i.Description,
+		&i.Reference,
+		&i.AmountIn,
+		&i.AmountOut,
+		&i.Balance,
+		&i.Status,
+		&i.MatchedEntryID,
+		&i.MatchedJournalID,
+		&i.MatchedAt,
+		&i.SourceFile,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getSystemJournals = `-- name: GetSystemJournals :many
 SELECT id, company_id, journal_date, reference, memo, status, created_by, created_at, kind, period_id, is_adjusting, party_id, due_date
 FROM journals
@@ -1436,6 +1611,46 @@ func (q *Queries) IncrementInvitationPinAttempts(ctx context.Context, id int64) 
 	return result.RowsAffected(), nil
 }
 
+const insertStatementLine = `-- name: InsertStatementLine :execrows
+INSERT INTO bank_statement_lines (
+    company_id, bank_account_id, line_date, description, reference,
+    amount_in, amount_out, balance, source_file
+) VALUES (
+    $1, $2, $3, $4, $5,
+    $6, $7, $8, $9
+)
+`
+
+type InsertStatementLineParams struct {
+	CompanyID     int64
+	BankAccountID int64
+	LineDate      pgtype.Date
+	Description   string
+	Reference     string
+	AmountIn      pgtype.Numeric
+	AmountOut     pgtype.Numeric
+	Balance       pgtype.Numeric
+	SourceFile    string
+}
+
+func (q *Queries) InsertStatementLine(ctx context.Context, arg InsertStatementLineParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertStatementLine,
+		arg.CompanyID,
+		arg.BankAccountID,
+		arg.LineDate,
+		arg.Description,
+		arg.Reference,
+		arg.AmountIn,
+		arg.AmountOut,
+		arg.Balance,
+		arg.SourceFile,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const listAccountMovements = `-- name: ListAccountMovements :many
 SELECT
     le.id,
@@ -1577,6 +1792,7 @@ SELECT
     a.account_type,
     a.sub_type,
     a.psak_line,
+    a.oci_kind,
     a.normal_balance,
     COALESCE(t.total_debit, 0)::NUMERIC(20, 2)  AS total_debit,
     COALESCE(t.total_credit, 0)::NUMERIC(20, 2) AS total_credit
@@ -1609,6 +1825,7 @@ type ListAccountTotalsByPeriodRow struct {
 	AccountType   AccountType
 	SubType       string
 	PsakLine      string
+	OciKind       pgtype.Text
 	NormalBalance NormalBalance
 	TotalDebit    pgtype.Numeric
 	TotalCredit   pgtype.Numeric
@@ -1631,6 +1848,7 @@ func (q *Queries) ListAccountTotalsByPeriod(ctx context.Context, arg ListAccount
 			&i.AccountType,
 			&i.SubType,
 			&i.PsakLine,
+			&i.OciKind,
 			&i.NormalBalance,
 			&i.TotalDebit,
 			&i.TotalCredit,
@@ -1892,6 +2110,7 @@ SELECT
     a.account_type,
     a.sub_type,
     a.psak_line,
+    a.oci_kind,
     a.normal_balance,
     COALESCE(t.total_debit, 0)::NUMERIC(20, 2)  AS total_debit,
     COALESCE(t.total_credit, 0)::NUMERIC(20, 2) AS total_credit
@@ -1925,6 +2144,7 @@ type ListAccountTotalsMovementsRow struct {
 	AccountType   AccountType
 	SubType       string
 	PsakLine      string
+	OciKind       pgtype.Text
 	NormalBalance NormalBalance
 	TotalDebit    pgtype.Numeric
 	TotalCredit   pgtype.Numeric
@@ -1950,6 +2170,7 @@ func (q *Queries) ListAccountTotalsMovements(ctx context.Context, arg ListAccoun
 			&i.AccountType,
 			&i.SubType,
 			&i.PsakLine,
+			&i.OciKind,
 			&i.NormalBalance,
 			&i.TotalDebit,
 			&i.TotalCredit,
@@ -2044,7 +2265,7 @@ func (q *Queries) ListAccountTotalsOpening(ctx context.Context, arg ListAccountT
 }
 
 const listAccounts = `-- name: ListAccounts :many
-SELECT id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line, is_receivable, is_payable
+SELECT id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line, is_receivable, is_payable, oci_kind
 FROM accounts
 WHERE company_id = $1 AND is_active = TRUE
 ORDER BY code
@@ -2073,6 +2294,7 @@ func (q *Queries) ListAccounts(ctx context.Context, companyID int64) ([]Account,
 			&i.PsakLine,
 			&i.IsReceivable,
 			&i.IsPayable,
+			&i.OciKind,
 		); err != nil {
 			return nil, err
 		}
@@ -2085,7 +2307,7 @@ func (q *Queries) ListAccounts(ctx context.Context, companyID int64) ([]Account,
 }
 
 const listAccountsAll = `-- name: ListAccountsAll :many
-SELECT id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line, is_receivable, is_payable
+SELECT id, company_id, code, name, account_type, normal_balance, is_active, created_at, sub_type, system_role, psak_line, is_receivable, is_payable, oci_kind
 FROM accounts
 WHERE company_id = $1
 ORDER BY code
@@ -2114,6 +2336,7 @@ func (q *Queries) ListAccountsAll(ctx context.Context, companyID int64) ([]Accou
 			&i.PsakLine,
 			&i.IsReceivable,
 			&i.IsPayable,
+			&i.OciKind,
 		); err != nil {
 			return nil, err
 		}
@@ -2162,6 +2385,68 @@ func (q *Queries) ListAdjustingJournals(ctx context.Context, arg ListAdjustingJo
 			&i.IsAdjusting,
 			&i.PartyID,
 			&i.DueDate,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listBankAccounts = `-- name: ListBankAccounts :many
+SELECT
+    ba.id, ba.company_id, ba.account_id, ba.bank_name, ba.account_number, ba.currency, ba.is_active, ba.created_at, ba.updated_at,
+    a.code AS account_code,
+    a.name AS account_name,
+    (SELECT COUNT(*) FROM bank_statement_lines s
+     WHERE s.company_id = ba.company_id AND s.bank_account_id = ba.id
+       AND s.status = 'unmatched') AS unmatched_count
+FROM bank_accounts ba
+JOIN accounts a ON a.id = ba.account_id AND a.company_id = ba.company_id
+WHERE ba.company_id = $1 AND ba.is_active = TRUE
+ORDER BY ba.id
+`
+
+type ListBankAccountsRow struct {
+	ID             int64
+	CompanyID      int64
+	AccountID      int64
+	BankName       string
+	AccountNumber  string
+	Currency       string
+	IsActive       bool
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	AccountCode    string
+	AccountName    string
+	UnmatchedCount int64
+}
+
+func (q *Queries) ListBankAccounts(ctx context.Context, companyID int64) ([]ListBankAccountsRow, error) {
+	rows, err := q.db.Query(ctx, listBankAccounts, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListBankAccountsRow{}
+	for rows.Next() {
+		var i ListBankAccountsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CompanyID,
+			&i.AccountID,
+			&i.BankName,
+			&i.AccountNumber,
+			&i.Currency,
+			&i.IsActive,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AccountCode,
+			&i.AccountName,
+			&i.UnmatchedCount,
 		); err != nil {
 			return nil, err
 		}
@@ -2922,6 +3207,134 @@ func (q *Queries) ListRecentJournals(ctx context.Context, arg ListRecentJournals
 	return items, nil
 }
 
+const listReconcileCandidates = `-- name: ListReconcileCandidates :many
+SELECT
+    le.id,
+    le.journal_id,
+    le.company_id,
+    le.account_id,
+    j.journal_date,
+    j.reference,
+    j.memo,
+    le.description,
+    le.debit,
+    le.credit
+FROM ledger_entries le
+JOIN journals j ON j.id = le.journal_id AND j.company_id = le.company_id
+WHERE le.company_id = $1
+  AND le.account_id = $2
+  AND j.status = 'posted'
+  AND j.kind <> 'closing'
+  AND j.reference NOT LIKE $3
+  AND NOT EXISTS (
+      SELECT 1 FROM bank_statement_lines s
+      WHERE s.company_id = le.company_id AND s.matched_entry_id = le.id
+  )
+ORDER BY j.journal_date, le.id
+`
+
+type ListReconcileCandidatesParams struct {
+	CompanyID int64
+	AccountID int64
+	RefPrefix string
+}
+
+type ListReconcileCandidatesRow struct {
+	ID          int64
+	JournalID   int64
+	CompanyID   int64
+	AccountID   int64
+	JournalDate pgtype.Date
+	Reference   string
+	Memo        string
+	Description string
+	Debit       pgtype.Numeric
+	Credit      pgtype.Numeric
+}
+
+// Kandidat pencocokan: baris ledger pada akun COA rekening bank yang belum
+// dicocokkan ke baris mutasi mana pun. Jurnal closing dan jurnal hasil
+// rekonsiliasi (referensi REC-*) tidak diikutkan supaya baris selisih yang
+// baru dibuat tidak dipakai lagi.
+func (q *Queries) ListReconcileCandidates(ctx context.Context, arg ListReconcileCandidatesParams) ([]ListReconcileCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, listReconcileCandidates, arg.CompanyID, arg.AccountID, arg.RefPrefix)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListReconcileCandidatesRow{}
+	for rows.Next() {
+		var i ListReconcileCandidatesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.JournalID,
+			&i.CompanyID,
+			&i.AccountID,
+			&i.JournalDate,
+			&i.Reference,
+			&i.Memo,
+			&i.Description,
+			&i.Debit,
+			&i.Credit,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listStatementLines = `-- name: ListStatementLines :many
+SELECT id, company_id, bank_account_id, line_date, description, reference, amount_in, amount_out, balance, status, matched_entry_id, matched_journal_id, matched_at, source_file, created_at
+FROM bank_statement_lines
+WHERE company_id = $1 AND bank_account_id = $2
+ORDER BY line_date, id
+`
+
+type ListStatementLinesParams struct {
+	CompanyID     int64
+	BankAccountID int64
+}
+
+func (q *Queries) ListStatementLines(ctx context.Context, arg ListStatementLinesParams) ([]BankStatementLine, error) {
+	rows, err := q.db.Query(ctx, listStatementLines, arg.CompanyID, arg.BankAccountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []BankStatementLine{}
+	for rows.Next() {
+		var i BankStatementLine
+		if err := rows.Scan(
+			&i.ID,
+			&i.CompanyID,
+			&i.BankAccountID,
+			&i.LineDate,
+			&i.Description,
+			&i.Reference,
+			&i.AmountIn,
+			&i.AmountOut,
+			&i.Balance,
+			&i.Status,
+			&i.MatchedEntryID,
+			&i.MatchedJournalID,
+			&i.MatchedAt,
+			&i.SourceFile,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markInvitationUsed = `-- name: MarkInvitationUsed :execrows
 UPDATE invitations
 SET status = 'used',
@@ -2949,6 +3362,35 @@ func (q *Queries) MarkInvitationUsed(ctx context.Context, arg MarkInvitationUsed
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const matchStatementLine = `-- name: MatchStatementLine :exec
+UPDATE bank_statement_lines
+SET status = CASE WHEN $1::BOOLEAN THEN 'adjusted'::statement_line_status
+                  ELSE 'matched'::statement_line_status END,
+    matched_entry_id = $2,
+    matched_journal_id = NULLIF($3::BIGINT, 0),
+    matched_at = now()
+WHERE id = $4 AND company_id = $5 AND status = 'unmatched'
+`
+
+type MatchStatementLineParams struct {
+	Adjusted         bool
+	MatchedEntryID   pgtype.Int8
+	MatchedJournalID int64
+	ID               int64
+	CompanyID        int64
+}
+
+func (q *Queries) MatchStatementLine(ctx context.Context, arg MatchStatementLineParams) error {
+	_, err := q.db.Exec(ctx, matchStatementLine,
+		arg.Adjusted,
+		arg.MatchedEntryID,
+		arg.MatchedJournalID,
+		arg.ID,
+		arg.CompanyID,
+	)
+	return err
 }
 
 const monthlyProfitLoss = `-- name: MonthlyProfitLoss :many
@@ -3092,6 +3534,23 @@ func (q *Queries) TouchUserActivity(ctx context.Context, id int64) (int64, error
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const unmatchStatementLine = `-- name: UnmatchStatementLine :exec
+UPDATE bank_statement_lines
+SET status = 'unmatched', matched_entry_id = NULL,
+    matched_journal_id = NULL, matched_at = NULL
+WHERE id = $1 AND company_id = $2 AND status <> 'unmatched'
+`
+
+type UnmatchStatementLineParams struct {
+	ID        int64
+	CompanyID int64
+}
+
+func (q *Queries) UnmatchStatementLine(ctx context.Context, arg UnmatchStatementLineParams) error {
+	_, err := q.db.Exec(ctx, unmatchStatementLine, arg.ID, arg.CompanyID)
+	return err
 }
 
 const updateAccount = `-- name: UpdateAccount :exec

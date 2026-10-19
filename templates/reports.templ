@@ -98,7 +98,7 @@ templ reportIdentity(view models.ReportView, reportTitle string, periodText stri
 func reportTitleFor(mode string) string {
 	switch mode {
 	case "pl":
-		return "Laporan Laba Rugi"
+		return "Laporan Laba Rugi dan Penghasilan Komprehensif Lain"
 	case "bs":
 		return "Neraca"
 	default:
@@ -168,7 +168,7 @@ templ ReportsPage(shell Shell, company db.Company, view models.ReportView) {
 		<div class={ reportGridClass(view.Mode) }>
 			if view.Mode != "bs" {
 				<div class={ cardClass }>
-					@reportIdentity(view, "Laporan Laba Rugi", "Untuk periode "+view.PeriodName)
+					@reportIdentity(view, "Laporan Laba Rugi dan Penghasilan Komprehensif Lain", "Untuk periode "+view.PeriodName)
 					<table class="w-full text-sm">
 						@reportColumns(view)
 						<tbody class="divide-y divide-line/50">
@@ -197,13 +197,25 @@ templ ReportsPage(shell Shell, company db.Company, view models.ReportView) {
 						</tbody>
 						<tfoot>
 							@psakGrand(view, "Laba (Rugi) Periode Berjalan", view.NetIncome, view.PriorNetIncome)
-						</tfoot>
+								@psakHeader("Penghasilan Komprehensif Lain (PSAK 201 par. 82A)")
+								for _, line := range view.OCIRecyclable {
+									@reportRow(view, line)
+								}
+								@psakSubtotal(view, "Jumlah Komponen Akan Direklasifikasi ke Laba Rugi", view.TotalOCIRecyclable, view.PriorTotalOCIRecyclable)
+								for _, line := range view.OCINonRecyclable {
+									@reportRow(view, line)
+								}
+								@psakSubtotal(view, "Jumlah Komponen Tidak Direklasifikasi ke Laba Rugi", view.TotalOCINonRecyclable, view.PriorTotalOCINonRecyclable)
+								@psakSubtotal(view, "Jumlah Penghasilan Komprehensif Lain", view.TotalOCI, view.PriorTotalOCI)
+								@psakGrand(view, "Jumlah Laba Rugi Komprehensif", view.ComprehensiveIncome, view.PriorComprehensiveIncome)
+							</tfoot>
 					</table>
 					<div class="border-t border-line px-5 py-3 text-xs text-muted">
 						Beban disajikan menurut sifat (PSAK 201 par. 99-105): setiap akun beban mewakili
 						satu sifat beban. Biaya keuangan (par. 82 huruf b) dan beban pajak (par. 82 huruf d)
-						disajikan sebagai pos tersendiri. Bagian penghasilan komprehensif lain (par. 82A)
-						belum disajikan dan akan menyusul pada batch berikutnya.
+						disajikan sebagai pos tersendiri.	Bagian penghasilan komprehensif lain (par. 82A) disajikan setelah laba
+						(rugi) periode berjalan, terbagi atas komponen yang akan dan tidak akan
+						direklasifikasi ke laba rugi di kemudian hari.
 					</div>
 				</div>
 			}
