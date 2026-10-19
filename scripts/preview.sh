@@ -3,19 +3,20 @@
 # temporer, tanpa systemd. Dipakai saat menguji instalasi baru lewat
 # halaman setup (roleplay pengguna pertama) atau mencoba perubahan kode.
 #
-#   scripts/preview.sh start    # jalankan di 127.0.0.1:5050 (DB akunting)
+#   scripts/preview.sh start    # jalankan di 127.0.0.1:8090 (DB akunting)
 #   scripts/preview.sh stop     # matikan
 #   scripts/preview.sh status   # cek
 #
-# Port default 5050 supaya tetap dilayani pemetaan tailscale serve 443 yang
-# sudah terpasang. Port dan DB bisa ditimpa: AKUNTING_PORT=8080 scripts/preview.sh
+# Port default 8090 = yang diproxy tailscale serve (https://443 dan :5050
+# keduanya diarahkan ke 127.0.0.1:8090), jadi URL HTTPS publik tetap hidup
+# selama preview jalan. Port dan DB bisa ditimpa: AKUNTING_PORT=8080 ...
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PID_FILE="$ROOT/var/preview.pid"
 LOG_FILE="$ROOT/var/preview.log"
 BIN="$ROOT/bin/akunting"
-PORT="${AKUNTING_PORT:-5050}"
+PORT="${AKUNTING_PORT:-8090}"
 DB="${AKUNTING_DB:-akunting}"
 PUBLIC_URL="${AKUNTING_PUBLIC_URL:-https://vps.lionfish-spica.ts.net}"
 
