@@ -11,7 +11,7 @@ Akunting adalah sistem akuntansi berbasis web buatan PT Tegiva Jaya Sejahtera: a
 ## Cara Build
 
 ```bash
-export PATH=$HOME/tools/go/bin:$HOME/go/bin:$HOME/.local/bin:$PATH GOCACHE=$HOME/.cache/go-build GOPATH=$HOME/go
+export PATH=$HOME/Resources/tools/go/bin:$HOME/Resources/go/bin:$HOME/.local/bin:$PATH GOCACHE=$HOME/.cache/go-build GOPATH=$HOME/Resources/go
 go build -o bin/accountingd ./cmd/server
 ```
 

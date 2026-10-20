@@ -42,7 +42,7 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT"
 
 # Lokasi umum Go/dll di luar PATH default (mis. go install atau tarball resmi).
-for p in /usr/local/go/bin "$HOME/.local/bin" "$HOME/tools/go/bin" "$HOME/go/bin"; do
+for p in /usr/local/go/bin "$HOME/.local/bin" "$HOME/Resources/tools/go/bin" "$HOME/Resources/go/bin"; do
     if [ -d "$p" ] && ! echo ":$PATH:" | grep -q ":$p:"; then
         PATH="$PATH:$p"
     fi
